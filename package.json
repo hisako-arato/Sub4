@@ -7,6 +7,7 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
+    "test": "node --test --experimental-strip-types --no-warnings test/plan.test.ts",
     "test:e2e": "node test/e2e.mjs"
   },
   "devDependencies": {

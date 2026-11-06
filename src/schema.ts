@@ -18,6 +18,22 @@ const MIGRATIONS: string[][] = [
       result     TEXT NOT NULL
     )`,
   ],
+  // 2: COROS の活動
+  [
+    `CREATE TABLE IF NOT EXISTS activities (
+      label_id    TEXT PRIMARY KEY,
+      sport_type  INTEGER NOT NULL,
+      title       TEXT NOT NULL,
+      date        TEXT NOT NULL,
+      start_ts    INTEGER,
+      distance_km REAL NOT NULL,
+      duration_s  INTEGER NOT NULL,
+      avg_hr      INTEGER,
+      location    TEXT,
+      synced_at   INTEGER NOT NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS activities_date ON activities (date)`,
+  ],
 ];
 
 let ready: Promise<void> | null = null;

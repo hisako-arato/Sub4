@@ -13,7 +13,7 @@
 <body>
   <header>
     <h1>Sub4 Coach</h1>
-    <p class="sub">静岡マラソン 2027/3/14 まで <strong id="countdown">–</strong> 日</p>
+    <p class="sub">静岡マラソン 2027/3/14 まで <strong id="countdown">–</strong> 日 <span id="phase" class="phase"></span></p>
   </header>
 
   <main>
@@ -27,34 +27,69 @@
       <p class="msg" id="login-msg"></p>
     </section>
 
-    <!-- COROS接続 -->
-    <section id="coros" class="card" hidden>
-      <h2>COROS 接続</h2>
-      <p id="coros-state">確認中…</p>
-      <div class="row">
-        <a class="btn" id="connect" href="/oauth/start">COROSと接続</a>
-        <button class="ghost" id="disconnect" hidden>接続を解除</button>
-      </div>
-      <p class="msg" id="coros-msg"></p>
-      <details id="as-details" hidden>
-        <summary>認可サーバーの発見ログ</summary>
-        <pre id="as-log"></pre>
-      </details>
-    </section>
+    <div id="app" hidden>
+      <!-- 同期・体調 -->
+      <section class="strip">
+        <span id="sync-state" class="pill"></span>
+        <span id="cond-recovery" class="pill" hidden></span>
+        <span id="cond-load" class="pill" hidden></span>
+        <button class="small ghost" id="sync">同期</button>
+      </section>
+      <p class="msg" id="sync-msg"></p>
 
-    <!-- 取得テスト -->
-    <section id="probe" class="card" hidden>
-      <h2>データ取得テスト</h2>
-      <p class="hint">COROSから実際に取れるデータを確認します（読み取りのみ。時計やCOROSアカウントには何も書き込みません）。</p>
-      <div class="row">
-        <button id="run-probe">取得テストを実行</button>
-        <button class="ghost" id="download" hidden>結果をJSONで保存</button>
-      </div>
-      <p class="msg" id="probe-msg"></p>
-      <div id="probe-result"></div>
-    </section>
+      <!-- 今日 -->
+      <section id="today" class="card today"></section>
 
-    <p class="footer"><button class="link" id="logout" hidden>ログアウト</button></p>
+      <!-- 2週間 -->
+      <section class="card">
+        <h2>2週間の練習</h2>
+        <ul id="days" class="days"></ul>
+        <p class="legend">
+          <span class="cat cat-speed">⚡ スピード</span>
+          <span class="cat cat-pace">🎯 ペース</span>
+          <span class="cat cat-distance">🛣️ 距離</span>
+          <span class="cat cat-jog">🌿 ジョグ</span>
+        </p>
+      </section>
+
+      <!-- 走力 -->
+      <section class="card">
+        <details>
+          <summary><h2 class="inline">走力とペースの基準</h2></summary>
+          <div id="ability"></div>
+        </details>
+      </section>
+
+      <!-- 設定 -->
+      <section class="card">
+        <details id="settings">
+          <summary><h2 class="inline">設定・COROS接続</h2></summary>
+
+          <h3>COROS 接続</h3>
+          <p id="coros-state">確認中…</p>
+          <div class="row">
+            <a class="btn" id="connect" href="/oauth/start">COROSと接続</a>
+            <button class="ghost" id="disconnect" hidden>接続を解除</button>
+          </div>
+          <p class="msg" id="coros-msg"></p>
+          <details id="as-details" hidden>
+            <summary>認可サーバーの発見ログ</summary>
+            <pre id="as-log"></pre>
+          </details>
+
+          <h3>データ取得テスト</h3>
+          <p class="hint">COROSから実際に取れるデータを確認します（読み取りのみ）。</p>
+          <div class="row">
+            <button id="run-probe">取得テストを実行</button>
+            <button class="ghost" id="download" hidden>結果をJSONで保存</button>
+          </div>
+          <p class="msg" id="probe-msg"></p>
+          <div id="probe-result"></div>
+
+          <p class="footer"><button class="link" id="logout">ログアウト</button></p>
+        </details>
+      </section>
+    </div>
   </main>
 
   <script src="/app.js" type="module"></script>

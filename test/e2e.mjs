@@ -101,6 +101,20 @@ assert.ok(!probe.calls.some((c) => c.tool.startsWith("create")), "write tools mu
 const latest = await (await req("/api/probe/latest")).json();
 assert.equal(latest.id, probe.id);
 
+// 4b. 同期 → 計画
+res = await req("/api/sync", { method: "POST" });
+const sync = await res.json();
+assert.equal(res.status, 200, JSON.stringify(sync));
+assert.ok(sync.activities >= 1);
+res = await req("/api/plan");
+const plan = await res.json();
+assert.equal(res.status, 200, JSON.stringify(plan));
+assert.equal(plan.sync.stale, false);
+assert.equal(plan.ability.race.date, "2026-11-03");
+assert.equal(plan.condition.loadRatio, 1.36);
+assert.ok(plan.days.length > 0 && plan.days.length <= 14);
+console.log(`plan: today=${plan.today} phase=${plan.phase?.label} first=${plan.days.find((d) => d.main)?.main.title}`);
+
 // 5. Cron（期限が近いのでトークン更新される: 偽COROSは expires_in=3600）
 const before = status.coros.obtained_at;
 await new Promise((r) => setTimeout(r, 1100));

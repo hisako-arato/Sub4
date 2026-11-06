@@ -30,11 +30,11 @@ async function refresh() {
   const { status, body } = await api("/api/status");
   if (status === 401) {
     show("login");
-    ["coros", "probe", "logout"].forEach((id) => show(id, false));
+    show("app", false);
     return;
   }
   show("login", false);
-  ["coros", "probe", "logout"].forEach((id) => show(id));
+  show("app");
 
   const c = body.coros;
   if (c.connected) {
@@ -45,16 +45,193 @@ async function refresh() {
     $("coros-state").innerHTML = `<span class="ng">● 未接続</span>`;
     $("connect").textContent = "COROSと接続";
     show("disconnect", false);
+    $("settings").open = true;
   }
   if (c.auth_server) {
     show("as-details");
     $("as-log").textContent = JSON.stringify(c.auth_server, null, 2);
   }
   $("run-probe").disabled = !c.connected;
+  $("sync").disabled = !c.connected;
 
+  await loadPlan(c.connected);
   const latest = await api("/api/probe/latest");
   if (latest.body) renderProbe(latest.body);
 }
+
+// ---- 練習計画 ----
+const CAT = {
+  speed: { icon: "⚡", label: "スピード" },
+  pace: { icon: "🎯", label: "ペース" },
+  distance: { icon: "🛣️", label: "距離" },
+  jog: { icon: "🌿", label: "ジョグ" },
+  race: { icon: "🏁", label: "大会" },
+  rest: { icon: "💤", label: "休養" },
+};
+const badge = (cat) => `<span class="cat cat-${cat}">${CAT[cat].icon} ${CAT[cat].label}</span>`;
+const mmdd = (d) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
+const fmtDur = (s) => {
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  return h ? `${h}時間${m}分` : `${m}分`;
+};
+
+// サブの練習を選んだら端末に覚えておく（段階3で記録と連携予定）
+const choiceKey = (date) => `sub4-choice-${date}`;
+function getChoice(date) {
+  try { return Number(localStorage.getItem(choiceKey(date)) ?? -1); } catch { return -1; }
+}
+function setChoice(date, i) {
+  try { localStorage.setItem(choiceKey(date), String(i)); } catch {}
+}
+
+function sessionDetail(s) {
+  return `<div class="sess">
+    <div class="sess-head">${badge(s.category)} <strong>${esc(s.title)}</strong> <span class="km">${s.distanceKm}km</span></div>
+    <div class="pace">ペース ${esc(s.pace)}</div>
+    <ul class="menu">${s.menu.map((m) => `<li>${esc(m)}</li>`).join("")}</ul>
+  </div>`;
+}
+
+function chosen(day) {
+  const i = getChoice(day.date);
+  return i >= 0 && day.subs[i] ? day.subs[i] : day.main;
+}
+
+function renderChoices(day) {
+  if (!day.main || !day.subs.length) return "";
+  const i = getChoice(day.date);
+  const opts = [day.main, ...day.subs]
+    .map((s, k) => `<button class="choice ${i === k - 1 ? "on" : ""}" data-date="${day.date}" data-i="${k - 1}">${k === 0 ? "メイン：" : "気分で："}${esc(s.title)}</button>`)
+    .join("");
+  return `<div class="choices">${opts}</div>`;
+}
+
+function actualLine(day) {
+  if (!day.actual.length) return "";
+  return day.actual
+    .map((a) => `<div class="actual">✓ 走った：${a.distanceKm}km / ${fmtDur(a.durationS)}${a.avgHr ? ` / 心拍 ${a.avgHr}` : ""}</div>`)
+    .join("");
+}
+
+function renderToday(plan) {
+  const day = plan.days[0];
+  if (!day) {
+    $("today").innerHTML = "<p>計画の期間外です。</p>";
+    return;
+  }
+  const s = chosen(day);
+  let html = `<div class="today-date">今日 ${mmdd(day.date)}（${day.weekday}）${day.holiday ? ` <span class="hol">${esc(day.holiday)}</span>` : ""}</div>`;
+  if (!s) {
+    html += `<div class="rest">${badge("rest")} <strong>今日は休養日</strong><p class="hint">しっかり休むのも練習のうち。軽いストレッチだけでもOK。</p></div>`;
+  } else {
+    if (day.optional) html += `<p class="opt">任意：余裕があれば。走らなくても計画には影響しません。</p>`;
+    html += sessionDetail(s) + renderChoices(day);
+  }
+  html += day.notes.map((n) => `<p class="note">💬 ${esc(n)}</p>`).join("");
+  html += actualLine(day);
+  $("today").innerHTML = html;
+}
+
+function renderDays(plan) {
+  $("days").innerHTML = plan.days
+    .slice(1)
+    .map((day) => {
+      const s = chosen(day);
+      const wk = day.weekday === "土" ? "sat" : day.weekday === "日" || day.holiday ? "sun" : "";
+      const head = `<span class="d ${wk}">${mmdd(day.date)}<small>${day.weekday}</small></span>`;
+      if (!s) return `<li class="day rest-day">${head}<span class="t muted">休養</span>${actualLine(day)}</li>`;
+      return `<li class="day${day.optional ? " optional" : ""}"><details>
+        <summary>${head}${badge(s.category)}<span class="t">${day.optional ? "（任意）" : ""}${esc(s.title)}</span><span class="km">${s.distanceKm}km</span></summary>
+        ${day.holiday ? `<p class="hol">${esc(day.holiday)}</p>` : ""}
+        ${sessionDetail(s)}${renderChoices(day)}
+        ${day.notes.map((n) => `<p class="note">💬 ${esc(n)}</p>`).join("")}
+      </details>${actualLine(day)}</li>`;
+    })
+    .join("");
+}
+
+function renderAbility(plan) {
+  const a = plan.ability;
+  const p = a.paces;
+  const h = a.history;
+  const race = a.race
+    ? `<p>直近の大会：${mmdd(a.race.date)} ${a.race.km}km <strong>${a.race.time}</strong>（${a.race.pace}/km${a.race.avgHr ? `、心拍 ${a.race.avgHr}` : ""}）</p>`
+    : `<p class="muted">直近120日にフルマラソンの記録が見つかりません。</p>`;
+  $("ability").innerHTML = `${race}
+    <p>COROS の予測：フル ${a.predictedFull}／練習の基準にする走力（VDOT）${a.vdotSpeed}${a.vdotRace ? `（大会実績 ${a.vdotRace}）` : ""}</p>
+    <table class="paces">
+      <tr><th>ジョグ</th><td>${p.jog}/km</td></tr>
+      <tr><th>ロング走</th><td>${p.long}/km</td></tr>
+      <tr><th>マラソンペース</th><td>強化期 ${p.mpBuild} → ピーク ${p.mpPeak}/km</td></tr>
+      <tr><th>閾値走</th><td>${p.tempo}/km</td></tr>
+      <tr><th>インターバル</th><td>${p.interval}/km</td></tr>
+      <tr><th>サブ4の平均</th><td>${p.goal}/km</td></tr>
+    </table>
+    <p>大会前8週：週平均 ${h.avgWeeklyKm}km・${h.avgRunsPerWeek}回、最長 ${h.longestKm}km</p>
+    <div class="bars">${h.weeks
+      .map((w) => `<div class="bar" title="${w.monday} ${w.km}km"><i style="height:${Math.min(100, w.km * 1.6)}%"></i><small>${mmdd(w.monday)}</small></div>`)
+      .join("")}</div>`;
+}
+
+async function loadPlan(connected) {
+  const { status, body } = await api("/api/plan");
+  if (status !== 200) {
+    $("today").innerHTML = `<p class="ng">計画を読み込めませんでした（${esc(body?.message || status)}）</p>`;
+    return;
+  }
+  const plan = body;
+  lastPlan = plan;
+  $("phase").textContent = plan.phase ? `・${plan.phase.label}${plan.phase.down ? "（軽めの週）" : ""}` : "";
+  const st = plan.sync;
+  $("sync-state").className = `pill ${st.stale ? "warn" : "okp"}`;
+  $("sync-state").textContent = st.syncedAt ? (st.stale ? `未同期（最終 ${fmtDate(st.syncedAt)}）` : `同期 ${fmtDate(st.syncedAt)}`) : "未同期";
+  const rec = plan.condition.recovery;
+  if (rec?.percent != null) {
+    show("cond-recovery");
+    $("cond-recovery").textContent = `回復 ${rec.percent}%`;
+  }
+  if (plan.condition.loadRatio != null) {
+    show("cond-load");
+    const r = plan.condition.loadRatio;
+    $("cond-load").className = `pill ${r > 1.5 ? "warn" : ""}`;
+    $("cond-load").textContent = `負荷比 ${r.toFixed(2)}`;
+  }
+  renderToday(plan);
+  renderDays(plan);
+  renderAbility(plan);
+  // まだ一度も同期していなければ自動で同期する
+  if (connected && !st.syncedAt && !autoSynced) {
+    autoSynced = true;
+    doSync();
+  }
+}
+let autoSynced = false;
+let lastPlan = null;
+
+async function doSync() {
+  $("sync").disabled = true;
+  $("sync-msg").textContent = "COROSと同期中…";
+  const { status, body } = await api("/api/sync", { method: "POST" });
+  $("sync").disabled = false;
+  if (status === 200) {
+    $("sync-msg").textContent = body.errors?.length ? `一部取得できませんでした：${body.errors.join(" / ")}` : "";
+    await loadPlan(true);
+  } else {
+    $("sync-msg").textContent = `同期に失敗しました：${body?.message || body?.error || status}（「未同期」のまま表示しています）`;
+  }
+}
+
+$("sync").addEventListener("click", doSync);
+
+document.addEventListener("click", (e) => {
+  const b = e.target.closest(".choice");
+  if (!b) return;
+  setChoice(b.dataset.date, Number(b.dataset.i));
+  if (lastPlan) {
+    renderToday(lastPlan);
+    renderDays(lastPlan);
+  }
+});
 
 function esc(s) {
   return String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]);

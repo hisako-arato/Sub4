@@ -58,3 +58,78 @@ code { font-size: .9em; }
 .args { font-size: 12px; color: var(--muted); margin-top: 4px; }
 .tag { font-size: 11px; background: var(--accent); color: #fff; border-radius: 6px; padding: 1px 6px; }
 .footer { text-align: center; }
+
+/* ---- 練習計画 ---- */
+:root {
+  --speed: #dc2626; --speed-bg: #fee2e2;
+  --pace: #2563eb; --pace-bg: #dbeafe;
+  --distance: #15803d; --distance-bg: #dcfce7;
+  --jog: #0f766e; --jog-bg: #e6f4f1;
+  --race: #a16207; --race-bg: #fef3c7;
+  --rest: #64748b; --rest-bg: #eef2f6;
+  --warn: #b45309;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --speed: #fca5a5; --speed-bg: #3b1414;
+    --pace: #93c5fd; --pace-bg: #13254a;
+    --distance: #86efac; --distance-bg: #0f2e1b;
+    --jog: #5eead4; --jog-bg: #0f2a27;
+    --race: #fcd34d; --race-bg: #3a2c08;
+    --rest: #a5b4c5; --rest-bg: #1d2630;
+    --warn: #fbbf24;
+  }
+}
+.phase { font-size: .9rem; }
+h2.inline { display: inline; }
+h3 { font-size: 1rem; margin: 16px 0 6px; }
+.strip { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
+.pill { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--card); border: 1px solid var(--border); }
+.pill.warn { color: var(--warn); border-color: var(--warn); font-weight: 600; }
+.pill.okp { color: var(--ok); }
+button.small { padding: 6px 12px; font-size: 13px; margin-left: auto; }
+.cat { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 6px; white-space: nowrap; }
+.cat-speed { color: var(--speed); background: var(--speed-bg); }
+.cat-pace { color: var(--pace); background: var(--pace-bg); }
+.cat-distance { color: var(--distance); background: var(--distance-bg); }
+.cat-jog { color: var(--jog); background: var(--jog-bg); }
+.cat-race { color: var(--race); background: var(--race-bg); }
+.cat-rest { color: var(--rest); background: var(--rest-bg); }
+.today { border-width: 2px; border-color: var(--accent); }
+.today-date { color: var(--muted); font-size: .9rem; margin-bottom: 8px; }
+.sess-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 1.05rem; }
+.today .sess-head { font-size: 1.25rem; }
+.km { font-variant-numeric: tabular-nums; color: var(--muted); }
+.pace { margin: 6px 0 2px; font-variant-numeric: tabular-nums; }
+.menu { margin: 4px 0; padding-left: 20px; }
+.menu li { margin: 2px 0; }
+.choices { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.choice { background: transparent; color: var(--text); border: 1px solid var(--border); padding: 6px 10px; font-size: 13px; }
+.choice.on { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+.note { margin: 8px 0 0; font-size: .92rem; }
+.opt { margin: 0 0 6px; font-size: .9rem; color: var(--muted); }
+.actual { margin-top: 6px; color: var(--ok); font-size: .9rem; font-weight: 600; }
+.hol { color: var(--speed); font-size: .85rem; margin: 4px 0; }
+.rest p { margin: 6px 0 0; }
+.muted { color: var(--muted); }
+ul.days { list-style: none; padding: 0; margin: 0; }
+.day { border-top: 1px solid var(--border); padding: 10px 0; }
+.day summary { display: flex; align-items: center; gap: 8px; list-style: none; }
+.day summary::-webkit-details-marker { display: none; }
+.day.rest-day { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.day.optional summary { opacity: .75; }
+.day .d { width: 48px; flex: none; font-variant-numeric: tabular-nums; font-weight: 600; }
+.day .d small { margin-left: 3px; font-weight: 400; color: var(--muted); }
+.day .d.sat small { color: var(--pace); }
+.day .d.sun small { color: var(--speed); }
+.day .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.day details[open] .sess { margin-top: 8px; }
+.legend { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0 0; }
+table.paces { border-collapse: collapse; margin: 8px 0; }
+table.paces th { text-align: left; font-weight: 400; color: var(--muted); padding: 3px 12px 3px 0; }
+table.paces td { font-variant-numeric: tabular-nums; }
+.bars { display: flex; gap: 4px; align-items: flex-end; height: 90px; margin-top: 8px; }
+.bar { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+.bar i { display: block; width: 100%; background: var(--accent); border-radius: 4px 4px 0 0; min-height: 2px; }
+.bar small { font-size: 10px; color: var(--muted); margin-top: 2px; }
+.day details .sess-head { display: none; }

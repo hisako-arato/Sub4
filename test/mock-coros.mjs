@@ -32,6 +32,12 @@ function toolResult(name, args) {
       "   LabelId: 481490330831585282 | SportType: 100",
     ].join("\n");
   }
+  if (name === "queryFitnessAssessmentOverview") {
+    return "Fitness Assessment Overview\n========================\n\nVO2max: 54\nThreshold Pace: 4:50 /km\n10 km Prediction: 48:00\nMarathon Prediction: 3:52:00";
+  }
+  if (name === "queryTrainingLoadAssessment") {
+    return "Training Load Assessment\n========================\n\n2026-11-06\nComment: Optimized\nShort-Term Load: 79\nLong-Term Load: 58\nLoad Ratio: 1.36";
+  }
   if (name === "queryRecoveryStatus") throw new Error("not supported on this device");
   return { ok: true, tool: name, args };
 }
