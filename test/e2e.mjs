@@ -1,17 +1,25 @@
 // ローカル通しテスト：偽COROS + wrangler dev を起動し、ログイン → OAuth接続 → 取得テスト → トークン更新 まで確認する。
 // 実行: npm run test:e2e
 import { spawn } from "node:child_process";
-import { writeFileSync, existsSync, readFileSync, rmSync } from "node:fs";
+import { writeFileSync, existsSync, readFileSync, rmSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import assert from "node:assert/strict";
 
 const APP = "http://localhost:8787";
 const procs = [];
-const cleanup = () => procs.forEach((p) => p.kill("SIGTERM"));
+// wrangler は子プロセス(workerd)を起動するので、プロセスグループごと止める
+const cleanup = () =>
+  procs.forEach((p) => {
+    try {
+      process.kill(-p.pid, "SIGTERM");
+    } catch {}
+  });
 process.on("exit", cleanup);
 
 function start(cmd, args, readyText, env = {}) {
   return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { env: { ...process.env, ...env }, stdio: ["ignore", "pipe", "pipe"] });
+    const p = spawn(cmd, args, { env: { ...process.env, ...env }, stdio: ["ignore", "pipe", "pipe"], detached: true });
     procs.push(p);
     let out = "";
     const onData = (d) => {
@@ -36,9 +44,12 @@ const devVarsBackup = existsSync(".dev.vars") ? readFileSync(".dev.vars", "utf8"
 writeFileSync(".dev.vars", "APP_PASSWORD=test-pass\nSESSION_SECRET=test-secret-0123456789\nCOROS_MCP_URL=http://localhost:8788/mcp\n");
 process.on("exit", () => (devVarsBackup !== null ? writeFileSync(".dev.vars", devVarsBackup) : rmSync(".dev.vars", { force: true })));
 
-await run("npx", ["wrangler", "d1", "migrations", "apply", "sub4", "--local"]);
+// 毎回まっさらなローカルDBで実行する
+const state = mkdtempSync(join(tmpdir(), "sub4-e2e-"));
+process.on("exit", () => rmSync(state, { recursive: true, force: true }));
+await run("npx", ["wrangler", "d1", "migrations", "apply", "sub4", "--local", "--persist-to", state]);
 await start("node", ["test/mock-coros.mjs"], "listening");
-await start("npx", ["wrangler", "dev", "--port", "8787", "--test-scheduled"], "Ready on");
+await start("npx", ["wrangler", "dev", "--port", "8787", "--test-scheduled", "--persist-to", state], "Ready on");
 
 let cookie = "";
 async function req(path, opts = {}) {
