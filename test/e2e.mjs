@@ -41,13 +41,12 @@ const run = (cmd, args) =>
 
 // 秘密情報（テスト用）
 const devVarsBackup = existsSync(".dev.vars") ? readFileSync(".dev.vars", "utf8") : null;
-writeFileSync(".dev.vars", "APP_PASSWORD=test-pass\nSESSION_SECRET=test-secret-0123456789\nCOROS_MCP_URL=http://localhost:8788/mcp\n");
+writeFileSync(".dev.vars", "APP_PASSWORD=test-pass\nCOROS_MCP_URL=http://localhost:8788/mcp\n");
 process.on("exit", () => (devVarsBackup !== null ? writeFileSync(".dev.vars", devVarsBackup) : rmSync(".dev.vars", { force: true })));
 
 // 毎回まっさらなローカルDBで実行する
 const state = mkdtempSync(join(tmpdir(), "sub4-e2e-"));
 process.on("exit", () => rmSync(state, { recursive: true, force: true }));
-await run("npx", ["wrangler", "d1", "migrations", "apply", "sub4", "--local", "--persist-to", state]);
 await start("node", ["test/mock-coros.mjs"], "listening");
 await start("npx", ["wrangler", "dev", "--port", "8787", "--test-scheduled", "--persist-to", state], "Ready on");
 

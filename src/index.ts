@@ -3,6 +3,7 @@ import { isLoggedIn, login, logout } from "./session.ts";
 import { connectionStatus, disconnect, getAccessToken, handleCallback, startAuth } from "./oauth.ts";
 import { AuthRequiredError } from "./mcp.ts";
 import { runProbe } from "./probe.ts";
+import { ensureSchema } from "./schema.ts";
 
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 
@@ -48,6 +49,7 @@ async function route(req: Request, env: Env): Promise<Response> {
 export default {
   async fetch(req, env): Promise<Response> {
     try {
+      await ensureSchema(env);
       return await route(req, env);
     } catch (e) {
       if (e instanceof AuthRequiredError) return json({ error: "coros_auth_required", message: e.message }, 409);
@@ -59,7 +61,9 @@ export default {
   // 毎朝：トークンの期限が7日以内なら更新（30日で切れるのを防ぐ）。後の段階でデータ同期を追加。
   async scheduled(_event, env, ctx): Promise<void> {
     ctx.waitUntil(
-      getAccessToken(env, 7 * 86400).catch((e) => console.error("token refresh failed", e)),
+      ensureSchema(env)
+        .then(() => getAccessToken(env, 7 * 86400))
+        .catch((e) => console.error("token refresh failed", e)),
     );
   },
 } satisfies ExportedHandler<Env>;

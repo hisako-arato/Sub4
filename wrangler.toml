@@ -11,9 +11,8 @@ run_worker_first = ["/api/*", "/oauth/*"]
 [[d1_databases]]
 binding = "DB"
 database_name = "sub4"
-# `npx wrangler d1 create sub4` の出力にある database_id に書き換える
-database_id = "00000000-0000-0000-0000-000000000000"
-migrations_dir = "migrations"
+database_id = "f36c2cfb-cdd0-4d3d-bb03-981baa9d5662"
+# テーブルは Worker が初回アクセス時に自動作成する（src/schema.ts）
 
 # 毎朝 5:00 JST（= 20:00 UTC）にトークン更新（後の段階でデータ同期もここで行う）
 [triggers]
@@ -23,6 +22,6 @@ crons = ["0 20 * * *"]
 COROS_MCP_URL = "https://mcp.coros.com/mcp"
 
 # 秘密情報は wrangler secret で登録（README参照）
-#   APP_PASSWORD   … アプリのログインパスワード
-#   SESSION_SECRET … セッション署名用のランダム文字列
+#   APP_PASSWORD   … アプリのログインパスワード（必須）
+#   SESSION_SECRET … セッション署名鍵（任意。未設定なら自動生成してDBに保存）
 #   COROS_CLIENT_ID / COROS_CLIENT_SECRET … COROS が動的クライアント登録に非対応だった場合のみ
