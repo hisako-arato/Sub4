@@ -9,6 +9,7 @@ const codes = new Map(); // code → { challenge, redirect_uri }
 const tokens = new Set();
 const refreshTokens = new Set();
 let clientId = null;
+const pushed = [];
 
 const b64url = (buf) => buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
@@ -39,6 +40,15 @@ function toolResult(name, args) {
     return "Training Load Assessment\n========================\n\n2026-11-06\nComment: Optimized\nShort-Term Load: 79\nLong-Term Load: 58\nLoad Ratio: 1.36";
   }
   if (name === "queryRecoveryStatus") throw new Error("not supported on this device");
+  if (name === "createScheduledWorkout" || name === "updateScheduledWorkout") {
+    const c = args.course;
+    if (!/^\d{8}$/.test(args.date) || c?.sportType !== 1 || !c.courseName || !c.courseDescription || !c.sections?.length) {
+      throw new Error("invalid course");
+    }
+    if (name === "updateScheduledWorkout" && args.idInPlan !== "777") throw new Error("unknown idInPlan");
+    pushed.push({ name, date: args.date, title: c.courseName });
+    return `Workout ${name === "createScheduledWorkout" ? "created" : "updated"} on ${args.date}\nidInPlan: 777\nName: ${c.courseName}`;
+  }
   return { ok: true, tool: name, args };
 }
 

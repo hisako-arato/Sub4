@@ -135,3 +135,51 @@ test("大会日はレース、ピーク期に30km走が2回", () => {
   assert.equal(days.find((d) => d.date === RACE_DATE)?.main?.category, "race");
   assert.equal(days.filter((d) => d.main?.title === "30km走").length, 2);
 });
+
+// ---- 時計への送信（COROS course 形式） ----
+import { toCourse } from "../src/coros/workout.ts";
+
+function checkSection(sec: any, inSets: boolean, where: string) {
+  if (sec.intervalGroup) {
+    assert.ok(!inSets, `${where}: 繰り返しの入れ子`);
+    assert.ok(sec.repeats >= 1 && sec.repeats <= 20, `${where}: repeats`);
+    for (const k of ["intensityType", "targetType", "targetValue", "intensityValueStart", "intensityValueEnd"]) {
+      assert.ok(!(k in sec), `${where}: 繰り返しの外枠に ${k}`);
+    }
+    assert.ok(sec.sets.length > 0, `${where}: 空の sets`);
+    for (const m of sec.sets) checkSection(m, true, where);
+    return;
+  }
+  assert.ok(inSets ? [2, 3].includes(sec.sectionType) : [1, 2, 3, 4].includes(sec.sectionType), `${where}: sectionType`);
+  assert.ok([1, 2].includes(sec.targetType), `${where}: targetType`);
+  assert.ok(Number.isInteger(sec.targetValue) && sec.targetValue > 0, `${where}: targetValue`);
+  assert.equal(sec.intensityType, 2, `${where}: intensityType`);
+  for (const v of [sec.intensityValueStart, sec.intensityValueEnd]) {
+    assert.ok(Number.isInteger(v) && v >= 120 && v <= 1499, `${where}: pace ${v}`);
+  }
+}
+
+test("全シーズンの練習（気分の練習も含む）が COROS の形式を満たす", () => {
+  let n = 0;
+  for (const day of season(1.0)) {
+    for (const s of [day.main, ...day.subs]) {
+      if (!s) continue;
+      const c = toCourse(s);
+      const where = `${day.date} ${s.title}`;
+      assert.equal(c.sportType, 1);
+      assert.ok(c.courseName.length > 0 && c.courseName.length <= 100, where);
+      assert.ok(c.courseDescription.length > 0, where);
+      assert.ok(c.sections.length > 0, where);
+      for (const sec of c.sections) checkSection(sec, false, where);
+      n++;
+    }
+  }
+  assert.ok(n > 100, `確認した練習が少なすぎる: ${n}`);
+});
+
+test("インターバルは アップ→繰り返し→ダウン になる", () => {
+  const day = season(1.0).find((d) => d.main?.title === "インターバル")!;
+  const c = toCourse(day.main!) as any;
+  assert.deepEqual(c.sections.map((s: any) => (s.intervalGroup ? "repeat" : s.sectionType)), [1, "repeat", 4]);
+  assert.equal(c.sections[1].sets[0].targetValue, 1000);
+});

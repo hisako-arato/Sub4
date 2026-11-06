@@ -10,6 +10,7 @@ import { computeAbility } from "./plan/ability.ts";
 import { generatePlan } from "./plan/generate.ts";
 import { addDays, daysBetween, RACE_DATE, todayJst, weekSpecFor, PHASE_JA } from "./plan/calendar.ts";
 import { fmtPace, fmtTime, predictTime } from "./plan/vdot.ts";
+import { loadPushed, pushWorkout } from "./coros/workout.ts";
 
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 
@@ -56,6 +57,26 @@ async function route(req: Request, env: Env): Promise<Response> {
 
   if (p === "/api/plan") return json(await buildPlanResponse(env));
 
+  // 練習を時計（COROS の予定）に送る
+  if (p === "/api/push" && req.method === "POST") {
+    const body = (await req.json().catch(() => ({}))) as { date?: string; choice?: number };
+    const { days } = await computePlan(env);
+    const day = days.find((d) => d.date === body.date);
+    if (!day) return json({ error: "bad_date", message: "2週間の計画の中の日付だけ送れます" }, 400);
+    const choice = Number(body.choice ?? -1);
+    const session = choice >= 0 ? day.subs[choice] : day.main;
+    if (!session) return json({ error: "rest_day", message: "休養日なので送る練習はありません" }, 400);
+    try {
+      const r = await pushWorkout(env, day.date, session);
+      // 内部ID（idInPlan など）は利用者に見せない
+      const message = r.message.split("\n").filter((l) => !/id/i.test(l)).join("\n").trim();
+      return json({ ok: true, title: r.title, updated: r.updated, message });
+    } catch (e) {
+      if (e instanceof AuthRequiredError) throw e;
+      return json({ error: "push_failed", message: String(e instanceof Error ? e.message : e) }, 502);
+    }
+  }
+
   // 時計への送信を作るための確認用：書き込みツールの入力スキーマ
   if (p === "/api/tools") {
     const client = await McpClient.connect(env);
@@ -72,12 +93,17 @@ async function route(req: Request, env: Env): Promise<Response> {
   return json({ error: "not_found" }, 404);
 }
 
-async function buildPlanResponse(env: Env) {
+async function computePlan(env: Env) {
   const today = todayJst();
   const [snapshot, activities] = await Promise.all([loadSnapshot(env), loadActivities(env, addDays(today, -150))]);
   const ability = computeAbility(activities, snapshot?.fitness ?? null, today);
   const loadRatio = snapshot?.load?.[0]?.ratio ?? null;
   const days = generatePlan(ability, activities, { today, loadRatio });
+  return { today, snapshot, ability, loadRatio, days };
+}
+
+async function buildPlanResponse(env: Env) {
+  const [{ today, snapshot, ability, loadRatio, days }, pushed] = await Promise.all([computePlan(env), loadPushed(env)]);
   const spec = weekSpecFor(today);
   const syncedAt = snapshot?.syncedAt ?? null;
   const p = ability.paces;
@@ -118,7 +144,7 @@ async function buildPlanResponse(env: Env) {
       },
       history: ability.history,
     },
-    days,
+    days: days.map((d) => ({ ...d, pushed: pushed[d.date] ? { title: pushed[d.date].title, at: pushed[d.date].at } : null })),
   };
 }
 

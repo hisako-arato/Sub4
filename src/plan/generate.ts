@@ -18,7 +18,20 @@ export interface Session {
   pace: string; // 表示用 "5:40/km" や "6:03〜6:39/km"
   menu: string[];
   hard: boolean;
+  steps: Step[]; // 時計に送るための構造（ペースは秒/km の [速い側, 遅い側]）
 }
+
+export type Step =
+  | { kind: "warmup" | "training" | "recovery" | "cooldown"; distanceM?: number; timeS?: number; pace: [number, number] }
+  | { kind: "repeat"; times: number; steps: Step[] };
+
+/** 目標ペース ±5秒 */
+const around = (t: number): [number, number] => [Math.round(t - 5), Math.round(t + 5)];
+const WALK = 1499; // COROS が受け付ける最も遅いペース
+const dist = (kind: "warmup" | "training" | "recovery" | "cooldown", km: number, pace: [number, number]): Step =>
+  ({ kind, distanceM: Math.round(km * 1000), pace: [Math.round(pace[0]), Math.round(pace[1])] });
+const time = (kind: "warmup" | "training" | "recovery" | "cooldown", sec: number, pace: [number, number]): Step =>
+  ({ kind, timeS: Math.round(sec), pace: [Math.round(pace[0]), Math.round(pace[1])] });
 
 export interface DayPlan {
   date: string;
@@ -46,7 +59,10 @@ const range = (p: [number, number]) => `${fmtPace(p[0])}〜${fmtPace(p[1])}/km`;
 const r1 = (n: number) => Math.round(n * 10) / 10;
 
 function jog(a: Ability, km: number, title = "ジョグ"): Session {
-  return { category: "jog", title, distanceKm: km, pace: range(a.paces.jog), menu: [`${km}km を会話できる楽さで`], hard: false };
+  return {
+    category: "jog", title, distanceKm: km, pace: range(a.paces.jog), menu: [`${km}km を会話できる楽さで`], hard: false,
+    steps: [dist("training", km, a.paces.jog)],
+  };
 }
 
 function weekendSession(spec: WeekSpec, a: Ability): Session {
@@ -61,6 +77,7 @@ function weekendSession(spec: WeekSpec, a: Ability): Session {
       pace: range(p.long),
       menu: [`${k.km}km を一定のペースで`, k.km >= 20 ? "5kmごとに給水・補給の練習も" : "最後まで余裕を残して終える"],
       hard: k.km >= 16,
+      steps: [dist("training", k.km, p.long)],
     };
   }
   if (k.kind === "mp") {
@@ -72,6 +89,7 @@ function weekendSession(spec: WeekSpec, a: Ability): Session {
       pace: `${fmtPace(mp)}/km`,
       menu: ["アップ 2km ジョグ", `${k.km}km を ${fmtPace(mp)}/km で`, "ダウン 2km ジョグ"],
       hard: true,
+      steps: [dist("warmup", 2, p.jog), dist("training", k.km, around(mp)), dist("cooldown", 2, p.jog)],
     };
   }
   return {
@@ -81,6 +99,7 @@ function weekendSession(spec: WeekSpec, a: Ability): Session {
     pace: `${fmtPace(p.goal)}/km`,
     menu: [`前半は ${fmtPace(p.goal + 5)}/km で入り、30km まで我慢`, "30km 以降に余力があれば少しずつ上げる", "サブ4 達成のタイム目安：中間点 1:59:30"],
     hard: true,
+    steps: [dist("training", 42.195, around(p.goal))],
   };
 }
 
@@ -90,7 +109,14 @@ function wedSession(spec: WeekSpec, a: Ability): Session {
     case "jog":
       return jog(a, 5);
     case "strides":
-      return { ...jog(a, 6, "ジョグ＋流し"), menu: ["6km ジョグ", "最後に 100m の流し × 5（全力の8割、間は歩き）"] };
+      return {
+        ...jog(a, 6, "ジョグ＋流し"),
+        menu: ["6km ジョグ", "最後に 100m の流し × 5（全力の8割、間は歩き）"],
+        steps: [
+          dist("training", 6, p.jog),
+          { kind: "repeat", times: 5, steps: [dist("training", 0.1, [p.interval - 20, p.interval]), time("recovery", 60, [p.jog[1], WALK])] },
+        ],
+      };
     case "buildup":
       return {
         category: "pace",
@@ -99,6 +125,7 @@ function wedSession(spec: WeekSpec, a: Ability): Session {
         pace: `${fmtPace(p.jog[1])}→${fmtPace(p.mpBuild)}/km`,
         menu: ["8km を 2km ごとに少しずつペースアップ", `最後の 2km は ${fmtPace(p.mpBuild)}/km`],
         hard: true,
+        steps: [0, 1, 2, 3].map((i) => dist("training", 2, around(p.jog[1] + ((p.mpBuild - p.jog[1]) * i) / 3))),
       };
     case "interval": {
       const n = spec.intervalReps ?? 5;
@@ -109,6 +136,11 @@ function wedSession(spec: WeekSpec, a: Ability): Session {
         pace: `${fmtPace(p.interval)}/km`,
         menu: ["アップ 2km ジョグ", `1000m × ${n}本（${fmtPace(p.interval)}/km、間は 400m ジョグ）`, "ダウン 2km ジョグ"],
         hard: true,
+        steps: [
+          dist("warmup", 2, p.jog),
+          { kind: "repeat", times: n, steps: [dist("training", 1, around(p.interval)), dist("recovery", 0.4, [p.jog[1], WALK])] },
+          dist("cooldown", 2, p.jog),
+        ],
       };
     }
     case "tempo": {
@@ -120,6 +152,7 @@ function wedSession(spec: WeekSpec, a: Ability): Session {
         pace: `${fmtPace(p.tempo)}/km`,
         menu: ["アップ 2km ジョグ", `${m}分 を ${fmtPace(p.tempo)}/km（きついけど続けられる強さ）`, "ダウン 2km ジョグ"],
         hard: true,
+        steps: [dist("warmup", 2, p.jog), time("training", m * 60, around(p.tempo)), dist("cooldown", 2, p.jog)],
       };
     }
     case "sharpen":
@@ -130,6 +163,11 @@ function wedSession(spec: WeekSpec, a: Ability): Session {
         pace: `${fmtPace(p.goal)}/km`,
         menu: ["アップ 2km ジョグ", `2km × 2（${fmtPace(p.goal)}/km、間 3分ジョグ）`, "ダウン 1km ジョグ", "脚を使い切らない"],
         hard: false,
+        steps: [
+          dist("warmup", 2, p.jog),
+          { kind: "repeat", times: 2, steps: [dist("training", 2, around(p.goal)), time("recovery", 180, [p.jog[1], WALK])] },
+          dist("cooldown", 1, p.jog),
+        ],
       };
   }
 }
@@ -137,6 +175,12 @@ function wedSession(spec: WeekSpec, a: Ability): Session {
 function monKm(spec: WeekSpec): number {
   const base: Record<Phase, number> = { recovery: 4, base: 6, build: 7, peak: 8, taper: 6, race: 5 };
   return base[spec.phase] - (spec.down ? 1 : 0);
+}
+
+/** ファルトレク：アップ・ダウン以外は「インターバルのペース〜ジョグ」の幅で自由に */
+function fartlek(totalKm: number, a: Ability): Step[] {
+  const p = a.paces;
+  return [dist("warmup", 2, p.jog), dist("training", Math.max(totalKm - 4, 2), [p.interval, p.jog[1]]), dist("cooldown", 2, p.jog)];
 }
 
 /** メイン練習と同じくらいの負荷で、気分で選べる代わりの練習 */
@@ -147,19 +191,32 @@ function subsFor(main: Session, a: Ability): Session[] {
     const min = Math.round((main.distanceKm * (p.long[0] + p.long[1])) / 2 / 60 / 10) * 10;
     return [
       { ...main, title: "旅ラン", menu: [`知らない町や景色のよい道で ${main.distanceKm}km`, "写真休憩OK・ペースは気にしない"], hard: main.hard },
-      { ...main, title: "LSD（時間走）", pace: `${fmtPace(p.long[1])}/km より遅くてOK`, menu: [`距離ではなく ${min}分 走り続ける`], hard: main.hard },
+      {
+        ...main, title: "LSD（時間走）", pace: `${fmtPace(p.long[1])}/km より遅くてOK`, menu: [`距離ではなく ${min}分 走り続ける`],
+        steps: [time("training", min * 60, [p.long[1], p.long[1] + 60])],
+      },
     ];
   }
   if (main.category === "pace") {
     return [
       { ...main, title: "景色のよいコースでペース走", menu: [...main.menu, "川沿い・海沿いなど気持ちのいい道で"] },
-      { ...main, title: "ファルトレク", pace: "気分で緩急", menu: [`${main.distanceKm}km の間に、電柱・信号・曲がり角を目印に速い／ゆっくりを自由に`] },
+      {
+        ...main, title: "ファルトレク", pace: "気分で緩急", menu: [`${main.distanceKm}km の間に、電柱・信号・曲がり角を目印に速い／ゆっくりを自由に`],
+        steps: fartlek(main.distanceKm, a),
+      },
     ];
   }
   if (main.category === "speed") {
     return [
-      { ...main, title: "ファルトレク", pace: "気分で緩急", menu: ["アップ 2km", "1〜3分の速い区間 × 6〜8（目印は自由）", "ダウン 2km"] },
-      { ...main, title: "坂ダッシュ", pace: "坂を力強く", menu: ["アップ 2km", "60〜80m の上り坂ダッシュ × 8（下りは歩き）", "ダウン 2km"] },
+      { ...main, title: "ファルトレク", pace: "気分で緩急", menu: ["アップ 2km", "1〜3分の速い区間 × 6〜8（目印は自由）", "ダウン 2km"], steps: fartlek(main.distanceKm, a) },
+      {
+        ...main, title: "坂ダッシュ", pace: "坂を力強く", menu: ["アップ 2km", "60〜80m の上り坂ダッシュ × 8（下りは歩き）", "ダウン 2km"],
+        steps: [
+          dist("warmup", 2, p.jog),
+          { kind: "repeat", times: 8, steps: [dist("training", 0.07, [p.interval - 30, p.interval]), time("recovery", 90, [p.jog[1], WALK])] },
+          dist("cooldown", 2, p.jog),
+        ],
+      },
     ];
   }
   return [
@@ -197,7 +254,10 @@ function buildWeek(spec: WeekSpec, a: Ability, loadRatio: number | null | undefi
   const monNotes: string[] = [];
   if (isHoliday(at(0)) && spec.phase !== "recovery") {
     const km = Math.max(mon.distanceKm + 4, 10);
-    mon = { category: "distance", title: "ミドル走", distanceKm: km, pace: range(a.paces.jog), menu: [`祝日なので少し長めに ${km}km`], hard: false };
+    mon = {
+      category: "distance", title: "ミドル走", distanceKm: km, pace: range(a.paces.jog), menu: [`祝日なので少し長めに ${km}km`], hard: false,
+      steps: [dist("training", km, a.paces.jog)],
+    };
     monNotes.push(`${HOLIDAYS[at(0)]}なので月曜を少し長めにしたよ`);
   }
   sessions.set(at(0), { main: mon, optional: false, notes: monNotes });
@@ -207,7 +267,15 @@ function buildWeek(spec: WeekSpec, a: Ability, loadRatio: number | null | undefi
 
   // 週末
   if (spec.key.kind === "race") {
-    sessions.set(at(5), { main: { ...jog(a, 3, "前日ジョグ"), menu: ["3km ジョグ＋流し × 2", "早めに寝る"] }, optional: false, notes: [] });
+    const pre: Session = {
+      ...jog(a, 3, "前日ジョグ"),
+      menu: ["3km ジョグ＋流し × 2", "早めに寝る"],
+      steps: [
+        dist("training", 3, a.paces.jog),
+        { kind: "repeat", times: 2, steps: [dist("training", 0.1, [a.paces.goal - 30, a.paces.goal]), time("recovery", 60, [a.paces.jog[1], WALK])] },
+      ],
+    };
+    sessions.set(at(5), { main: pre, optional: false, notes: [] });
   }
   sessions.set(at(weekendDay), {
     main: weekendSession(spec, a),

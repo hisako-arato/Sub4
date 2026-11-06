@@ -18,9 +18,11 @@ export class McpClient {
   private sessionId: string | null = null;
   private negotiatedVersion: string | null = null;
   private nextId = 1;
+  private token: string;
 
-  private constructor(url: string, private token: string) {
+  private constructor(url: string, token: string) {
     this.url = url;
+    this.token = token;
   }
 
   static async connect(env: Env): Promise<McpClient> {

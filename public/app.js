@@ -92,6 +92,12 @@ function sessionDetail(s) {
   </div>`;
 }
 
+function pushButton(day) {
+  if (!day.main) return "";
+  const done = day.pushed ? `<span class="pushed">⌚ 送信済み：${esc(day.pushed.title)}</span>` : "";
+  return `<div class="push">${done}<button class="small ghost push-btn" data-date="${day.date}">${day.pushed ? "選んだ練習で送り直す" : "⌚ 時計に送る"}</button><span class="msg push-msg" id="push-msg-${day.date}"></span></div>`;
+}
+
 function chosen(day) {
   const i = getChoice(day.date);
   return i >= 0 && day.subs[i] ? day.subs[i] : day.main;
@@ -125,7 +131,7 @@ function renderToday(plan) {
     html += `<div class="rest">${badge("rest")} <strong>今日は休養日</strong><p class="hint">しっかり休むのも練習のうち。軽いストレッチだけでもOK。</p></div>`;
   } else {
     if (day.optional) html += `<p class="opt">任意：余裕があれば。走らなくても計画には影響しません。</p>`;
-    html += sessionDetail(s) + renderChoices(day);
+    html += sessionDetail(s) + renderChoices(day) + pushButton(day);
   }
   html += day.notes.map((n) => `<p class="note">💬 ${esc(n)}</p>`).join("");
   html += actualLine(day);
@@ -140,10 +146,10 @@ function renderDays(plan) {
       const wk = day.weekday === "土" ? "sat" : day.weekday === "日" || day.holiday ? "sun" : "";
       const head = `<span class="d ${wk}">${mmdd(day.date)}<small>${day.weekday}</small></span>`;
       if (!s) return `<li class="day rest-day">${head}<span class="t muted">休養</span>${actualLine(day)}</li>`;
-      return `<li class="day${day.optional ? " optional" : ""}"><details>
-        <summary>${head}${badge(s.category)}<span class="t">${day.optional ? "（任意）" : ""}${esc(s.title)}</span><span class="km">${s.distanceKm}km</span></summary>
+      return `<li class="day${day.optional ? " optional" : ""}"><details data-date="${day.date}"${openDays.has(day.date) ? " open" : ""}>
+        <summary>${head}${badge(s.category)}<span class="t">${day.optional ? "（任意）" : ""}${esc(s.title)}</span><span class="km">${s.distanceKm}km${day.pushed ? " ⌚" : ""}</span></summary>
         ${day.holiday ? `<p class="hol">${esc(day.holiday)}</p>` : ""}
-        ${sessionDetail(s)}${renderChoices(day)}
+        ${sessionDetail(s)}${renderChoices(day)}${pushButton(day)}
         ${day.notes.map((n) => `<p class="note">💬 ${esc(n)}</p>`).join("")}
       </details>${actualLine(day)}</li>`;
     })
@@ -223,7 +229,31 @@ async function doSync() {
 
 $("sync").addEventListener("click", doSync);
 
-document.addEventListener("click", (e) => {
+// 再描画しても開いている日を閉じない
+const openDays = new Set();
+document.addEventListener("toggle", (e) => {
+  const d = e.target.dataset?.date;
+  if (d) e.target.open ? openDays.add(d) : openDays.delete(d);
+}, true);
+
+document.addEventListener("click", async (e) => {
+  const pb = e.target.closest(".push-btn");
+  if (pb) {
+    const date = pb.dataset.date;
+    const msg = $(`push-msg-${date}`);
+    pb.disabled = true;
+    msg.textContent = "送信中…";
+    const { status, body } = await api("/api/push", { method: "POST", body: JSON.stringify({ date, choice: getChoice(date) }) });
+    pb.disabled = false;
+    if (status === 200) {
+      await loadPlan(false);
+      const m = $(`push-msg-${date}`);
+      if (m) m.textContent = `${body.updated ? "時計の予定を書き換えました" : "時計の予定に登録しました"}。COROS アプリで同期すると時計に入ります。${body.message ? `（${body.message}）` : ""}`;
+    } else {
+      msg.textContent = `送れませんでした：${body?.message || status}`;
+    }
+    return;
+  }
   const b = e.target.closest(".choice");
   if (!b) return;
   setChoice(b.dataset.date, Number(b.dataset.i));

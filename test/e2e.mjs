@@ -115,6 +115,25 @@ assert.equal(plan.condition.loadRatio, 1.36);
 assert.ok(plan.days.length > 0 && plan.days.length <= 14);
 console.log(`plan: today=${plan.today} phase=${plan.phase?.label} first=${plan.days.find((d) => d.main)?.main.title}`);
 
+// 4c. 時計に送る → 同じ日をもう一度送ると「更新」になる
+const target = plan.days.find((d) => d.main);
+res = await req("/api/push", { method: "POST", body: JSON.stringify({ date: target.date, choice: -1 }) });
+let push = await res.json();
+assert.equal(res.status, 200, JSON.stringify(push));
+assert.equal(push.updated, false);
+assert.ok(!/777/.test(push.message), "内部IDは見せない");
+res = await req("/api/push", { method: "POST", body: JSON.stringify({ date: target.date, choice: 0 }) });
+push = await res.json();
+assert.equal(res.status, 200, JSON.stringify(push));
+assert.equal(push.updated, true);
+const plan2 = await (await req("/api/plan")).json();
+assert.ok(plan2.days.find((d) => d.date === target.date).pushed, "送信済みが計画に出る");
+const restDay = plan.days.find((d) => !d.main);
+if (restDay) {
+  res = await req("/api/push", { method: "POST", body: JSON.stringify({ date: restDay.date }) });
+  assert.equal(res.status, 400);
+}
+
 // 5. Cron（期限が近いのでトークン更新される: 偽COROSは expires_in=3600）
 const before = status.coros.obtained_at;
 await new Promise((r) => setTimeout(r, 1100));
