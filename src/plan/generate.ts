@@ -101,6 +101,22 @@ function weekendSession(spec: WeekSpec, a: Ability): Session {
       steps: [dist("warmup", 2, p.jog), dist("training", k.km, around(mp)), dist("cooldown", 2, p.jog)],
     };
   }
+  if (k.kind === "tuneup") {
+    return {
+      category: "race",
+      title: `${k.name}（楽しむレース）`,
+      distanceKm: 42.2,
+      pace: range(p.long),
+      menu: [
+        `サブ4は狙わない。ロング走のペース（${range(p.long)}）で景色と雰囲気を楽しむ`,
+        `30km 以降に余裕があれば、最後の 10km だけ ${fmtPace(p.mpBuild)}/km まで上げてもOK`,
+        "給水・補給と、本番（3/14）で使う靴・ウェアのリハーサルに",
+        "脚に違和感があれば迷わずペースを落とす・歩く",
+      ],
+      hard: true,
+      steps: [dist("training", 32.2, p.long), dist("training", 10, [p.mpBuild, p.long[1]])],
+    };
+  }
   return {
     category: "race",
     title: "静岡マラソン",
@@ -117,24 +133,26 @@ function wedSession(spec: WeekSpec, a: Ability): Session {
   switch (spec.wed) {
     case "jog":
       return jog(a, 5);
-    case "strides":
+    case "strides": {
+      const km = spec.down ? 6 : 8;
       return {
-        ...jog(a, 6, "ジョグ＋流し"),
-        menu: ["6km ジョグ", "最後に 100m の流し × 5（全力の8割、間は歩き）"],
+        ...jog(a, km, "ジョグ＋流し"),
+        menu: [`${km}km ジョグ`, "最後に 100m の流し × 5（全力の8割、間は歩き）"],
         steps: [
-          dist("training", 6, p.jog),
+          dist("training", km, p.jog),
           { kind: "repeat", times: 5, steps: [dist("training", 0.1, [p.interval - 20, p.interval]), time("recovery", 60, [p.jog[1], WALK])] },
         ],
       };
+    }
     case "buildup":
       return {
         category: "pace",
         title: "ビルドアップ走",
-        distanceKm: 8,
+        distanceKm: 10,
         pace: `${fmtPace(p.jog[1])}→${fmtPace(p.mpBuild)}/km`,
-        menu: ["8km を 2km ごとに少しずつペースアップ", `最後の 2km は ${fmtPace(p.mpBuild)}/km`],
+        menu: ["10km を 2km ごとに少しずつペースアップ", `最後の 2km は ${fmtPace(p.mpBuild)}/km`],
         hard: true,
-        steps: [0, 1, 2, 3].map((i) => dist("training", 2, around(p.jog[1] + ((p.mpBuild - p.jog[1]) * i) / 3))),
+        steps: [0, 1, 2, 3, 4].map((i) => dist("training", 2, around(p.jog[1] + ((p.mpBuild - p.jog[1]) * i) / 4))),
       };
     case "interval": {
       const n = spec.intervalReps ?? 5;
@@ -182,8 +200,8 @@ function wedSession(spec: WeekSpec, a: Ability): Session {
 }
 
 function monKm(spec: WeekSpec): number {
-  const base: Record<Phase, number> = { recovery: 4, base: 6, build: 7, peak: 8, taper: 6, race: 5 };
-  return base[spec.phase] - (spec.down ? 1 : 0);
+  const base: Record<Phase, number> = { recovery: 4, base: 8, build: 9, peak: 10, taper: 6, race: 5 };
+  return base[spec.phase] - (spec.down ? 2 : 0);
 }
 
 /** ファルトレク：アップ・ダウン以外は「インターバルのペース〜ジョグ」の幅で自由に */
@@ -256,7 +274,7 @@ function pickOptionalDay(monday: string, weekendDay: number, a: Ability): number
 function buildWeek(spec: WeekSpec, a: Ability, loadRatio: number | null | undefined): WeekPlan {
   const sessions: WeekPlan["sessions"] = new Map();
   const at = (d: number) => addDays(spec.monday, d);
-  const weekendDay = spec.key.kind === "race" ? 6 : pickWeekendDay(a);
+  const weekendDay = spec.key.kind === "race" || spec.key.kind === "tuneup" ? 6 : pickWeekendDay(a);
 
   // 月
   let mon = jog(a, monKm(spec));
@@ -269,7 +287,7 @@ function buildWeek(spec: WeekSpec, a: Ability, loadRatio: number | null | undefi
     };
     monNotes.push(`${HOLIDAYS[at(0)]}なので月曜を少し長めにしたよ`);
   }
-  sessions.set(at(0), { main: mon, optional: false, notes: monNotes });
+  if (!spec.monRest) sessions.set(at(0), { main: mon, optional: false, notes: monNotes });
 
   // 水
   sessions.set(at(2), { main: wedSession(spec, a), optional: false, notes: [] });
@@ -289,7 +307,7 @@ function buildWeek(spec: WeekSpec, a: Ability, loadRatio: number | null | undefi
   sessions.set(at(weekendDay), {
     main: weekendSession(spec, a),
     optional: false,
-    notes: spec.down ? ["今週は疲れを抜く軽めの週"] : [],
+    notes: spec.key.kind === "tuneup" ? ["本番は 3/14。ここで頑張りすぎないのがいちばんの作戦"] : spec.label ? [spec.label] : spec.down ? ["今週は疲れを抜く軽めの週"] : [],
   });
 
   // 任意の4回目ジョグ（余裕のある週だけ）
@@ -297,7 +315,7 @@ function buildWeek(spec: WeekSpec, a: Ability, loadRatio: number | null | undefi
   const loadOk = loadRatio == null || loadRatio <= OPTIONAL_LOAD_LIMIT;
   if (roomy && loadOk) {
     const d = pickOptionalDay(spec.monday, weekendDay, a);
-    const km = spec.phase === "peak" ? 6 : 5;
+    const km = spec.phase === "peak" ? 8 : spec.phase === "build" ? 7 : 6;
     sessions.set(at(d), {
       main: { ...jog(a, km, "任意ジョグ"), menu: [`余裕があれば ${km}km`, "走らなくても計画には影響しない"] },
       optional: true,
@@ -330,7 +348,7 @@ export function buildBaseDays(a: Ability, activities: Activity[], from: string, 
       weekday: WEEKDAY_JA[weekday(date)],
       holiday: HOLIDAYS[date],
       phase: spec?.phase ?? null,
-      phaseLabel: spec ? PHASE_JA[spec.phase] + (spec.down ? "（軽めの週）" : "") : null,
+      phaseLabel: spec ? PHASE_JA[spec.phase] + (spec.label ? `（${spec.label}）` : spec.down ? "（軽めの週）" : "") : null,
       main,
       planned: main,
       subs: main ? subsFor(main, a) : [],

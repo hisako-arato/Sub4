@@ -32,8 +32,11 @@ const SUB4_VDOT_FALLBACK = 38;
 export function computeAbility(all: Activity[], fitness: FitnessOverview | null, today: string): Ability {
   const runs = all.filter(isRun).sort((a, b) => (a.date < b.date ? -1 : 1));
 
-  // 直近120日のうち最新の 40km 以上を「大会」とみなす
-  const raceAct = [...runs].reverse().find((a) => a.distanceKm >= 40 && daysBetween(a.date, today) <= 120);
+  // 直近120日の 40km 以上を「大会」とみなし、いちばん速いものを走力の基準にする
+  // （台北マラソンのようにサブ4を狙わずに走った大会で基準が下がらないように）
+  const raceAct = runs
+    .filter((a) => a.distanceKm >= 40 && daysBetween(a.date, today) <= 120)
+    .sort((x, y) => x.durationS / x.distanceKm - y.durationS / y.distanceKm)[0];
   const race = raceAct
     ? {
         date: raceAct.date,

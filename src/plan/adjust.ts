@@ -2,7 +2,7 @@
 //
 // 安全原則（CLAUDE.md 5.4）
 //  - 休んだ分を一度に詰め込まない：組み直すのは週に1回まで、できなかった練習は7割に短縮
-//  - 週の総負荷を急に増やさない：週の距離に上限、ロング走は最近の最長距離＋6kmまで
+//  - 週の総負荷を急に増やさない：週の距離は「直近8週の多かった4週の平均×1.2」か「前週×1.2」まで、ロング走は最近の最長距離＋6kmまで
 //  - 高強度を2日続けない
 //  - 数日（5日以上）空いた後は、次の2回は強度を上げずに戻す
 // 体調：疲労→以降の負荷を下げる／痛み→強度を上げず休養・受診を促す／負荷比・回復状況も見る
@@ -229,8 +229,9 @@ export function adjustPlan(base: DayPlan[], a: Ability, activities: Activity[], 
     for (const d of future) {
       if (!d.main || d.main.category === "race" || d.main.distanceKm <= 12) continue;
       const since = addDays(d.date, -21);
-      const actual = runs.filter((r) => r.date >= since && r.date < d.date && r.date <= today && r.distanceKm < 40).map((r) => r.distanceKm);
-      const planned = future.filter((x) => x.date >= since && x.date < d.date && x.main).map((x) => x.main!.distanceKm);
+      // 大会（42km）も「長く走れた」証拠として数える（ただし 30km 相当まで）
+      const actual = runs.filter((r) => r.date >= since && r.date < d.date && r.date <= today).map((r) => Math.min(r.distanceKm, 30));
+      const planned = future.filter((x) => x.date >= since && x.date < d.date && x.main).map((x) => Math.min(x.main!.distanceKm, 30));
       const recent = Math.max(0, ...actual, ...planned);
       const cap = Math.max(12, recent + 6);
       if (d.main.distanceKm > cap + 0.5) {
@@ -251,8 +252,10 @@ export function adjustPlan(base: DayPlan[], a: Ability, activities: Activity[], 
     for (const mon of [weekStart, addDays(weekStart, 7)]) {
       const prevMon = addDays(mon, -7);
       const prev = mon === weekStart ? actualWeekKm(prevMon) : weekKm(prevMon, true);
-      const avg4 = [1, 2, 3, 4].reduce((s, i) => s + actualWeekKm(addDays(weekStart, -7 * i)), 0) / 4;
-      const cap = Math.max(avg4 * 1.3, prev * 1.2, 20);
+      // 基準は「直近8週のうち多かった4週の平均」。回復週・調整週で基準が下がりすぎないように
+      const last8 = [1, 2, 3, 4, 5, 6, 7, 8].map((i) => actualWeekKm(addDays(weekStart, -7 * i))).sort((x, y) => y - x);
+      const best4 = last8.slice(0, 4).reduce((x, y) => x + y, 0) / 4;
+      const cap = Math.max(best4 * 1.2, prev * 1.2, 20);
       const total = weekKm(mon, true);
       if (total <= cap + 0.5) continue;
       const key = future

@@ -307,3 +307,27 @@ test("使い始める前の日は「走らなかった」と判定しない", ()
   for (const d of r.past) assert.ok(!["auto_skipped", "skipped"].includes(d.result?.state ?? ""), d.date);
   assert.equal(r.past.find((d) => d.date === "2026-11-03")?.result?.state, "extra");
 });
+
+// ---- 台北マラソン（12/20、サブ4は狙わない） ----
+test("台北マラソン：前週は調整、当日は楽しむレース、翌日は休養、翌週は回復", () => {
+  const days = buildBaseDays(A, acts, "2026-12-14", "2026-12-27", 1.0);
+  const at = (d: string) => days.find((x) => x.date === d)!;
+  assert.match(at("2026-12-20").main!.title, /台北マラソン/);
+  assert.equal(at("2026-12-20").main!.category, "race");
+  assert.equal(at("2026-12-19").main, null, "前日は移動・休養");
+  assert.equal(at("2026-12-21").main, null, "翌日は休養");
+  for (const d of days) assert.ok(!d.optional, `${d.date} に任意ジョグ`);
+  for (const d of days.filter((x) => x.date > "2026-12-20")) assert.ok(!d.main?.hard, `${d.date} 回復週に高強度`);
+});
+
+test("台北を抑えて走っても、走力の基準は速い方の大会を使う", () => {
+  const slowTaipei = run("2026-12-20", 42.2, 420); // 7:00/km で楽しんだ
+  const a = computeAbility([...acts, slowTaipei], fitness, "2026-12-25");
+  assert.equal(a.race?.date, "2026-11-03");
+});
+
+test("平日（祝日以外）の練習は 12km 以下", () => {
+  for (const d of buildBaseDays(A, acts, "2026-11-07", RACE_DATE, 1.0)) {
+    if (d.main && weekday(d.date) < 5 && !isHoliday(d.date)) assert.ok(d.main.distanceKm <= 12.5, `${d.date} ${d.main.title} ${d.main.distanceKm}`);
+  }
+});

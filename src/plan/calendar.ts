@@ -64,12 +64,15 @@ export const PHASE_JA: Record<Phase, string> = {
 export interface WeekSpec {
   monday: string;
   phase: Phase;
-  down?: boolean; // 軽めの週
+  down?: boolean; // 軽めの週（任意ジョグなし）
+  label?: string; // 週の説明（例：台北前の調整週）
+  monRest?: boolean; // 月曜を休養にする（大会の翌日など）
   key:
     | { kind: "jog"; km: number }
     | { kind: "long"; km: number }
     | { kind: "mp"; km: number } // マラソンペース区間の距離（前後にアップ・ダウン2kmずつ）
-    | { kind: "race" };
+    | { kind: "race" }
+    | { kind: "tuneup"; name: string }; // サブ4を狙わない大会（日曜）
   wed: "jog" | "strides" | "buildup" | "interval" | "tempo" | "sharpen";
   intervalReps?: number;
   tempoMin?: number;
@@ -77,16 +80,17 @@ export interface WeekSpec {
 
 // 大会日（3/14）から逆算した週ごとの計画（月曜始まり）。
 // ロング走は週+4km以内で伸ばし、3〜4週に1回は軽めの週を入れる。30km走はピーク期に2回。
+// 12/20 台北マラソン（サブ4は狙わない）：前の週を調整週、後の週を回復週にする。
 export const WEEKS: WeekSpec[] = [
   { monday: "2026-11-02", phase: "recovery", key: { kind: "jog", km: 5 }, wed: "jog" },
   { monday: "2026-11-09", phase: "recovery", key: { kind: "jog", km: 8 }, wed: "jog" },
   { monday: "2026-11-16", phase: "base", key: { kind: "long", km: 14 }, wed: "strides" },
   { monday: "2026-11-23", phase: "base", key: { kind: "long", km: 16 }, wed: "strides" },
   { monday: "2026-11-30", phase: "base", key: { kind: "long", km: 18 }, wed: "buildup" },
-  { monday: "2026-12-07", phase: "base", down: true, key: { kind: "long", km: 14 }, wed: "strides" },
-  { monday: "2026-12-14", phase: "base", key: { kind: "long", km: 20 }, wed: "buildup" },
-  { monday: "2026-12-21", phase: "build", key: { kind: "mp", km: 8 }, wed: "interval", intervalReps: 4 },
-  { monday: "2026-12-28", phase: "build", down: true, key: { kind: "long", km: 18 }, wed: "strides" },
+  { monday: "2026-12-07", phase: "base", key: { kind: "long", km: 20 }, wed: "buildup" },
+  { monday: "2026-12-14", phase: "base", down: true, label: "台北前の調整週", key: { kind: "tuneup", name: "台北マラソン" }, wed: "strides" },
+  { monday: "2026-12-21", phase: "recovery", down: true, label: "台北後の回復週", monRest: true, key: { kind: "jog", km: 10 }, wed: "jog" },
+  { monday: "2026-12-28", phase: "build", key: { kind: "mp", km: 8 }, wed: "interval", intervalReps: 4 },
   { monday: "2027-01-04", phase: "build", key: { kind: "long", km: 22 }, wed: "tempo", tempoMin: 20 },
   { monday: "2027-01-11", phase: "build", key: { kind: "mp", km: 12 }, wed: "interval", intervalReps: 5 },
   { monday: "2027-01-18", phase: "build", down: true, key: { kind: "long", km: 18 }, wed: "strides" },

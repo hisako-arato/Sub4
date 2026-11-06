@@ -263,7 +263,7 @@ function renderVolume(plan) {
     <p>今週：走った ${w.done}km ＋ 予定 ${w.planned}km ＝ <strong>${wTotal}km</strong>${w.optional ? `（任意ジョグ込みで ${Math.round((wTotal + w.optional) * 10) / 10}km）` : ""}</p>
     <div class="vchart">${rows}</div>
     <p class="vlegend"><span><i class="va"></i>走った</span><span><i class="vp"></i>予定</span><span><i class="vo"></i>任意ジョグ</span><span><i class="band"></i>サブ4の目安 ${v.target.min}〜${v.target.max}km/月</span></p>
-    <p class="hint">11月・3月は大会（42km）を含みます。3月は大会日までの分です。</p>`;
+    <p class="hint">11月（前橋）・12月（台北）・3月（静岡）は大会の 42km を含みます。3月は大会日までの分です。</p>`;
 }
 
 function renderSettings(plan) {
