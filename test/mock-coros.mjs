@@ -39,6 +39,9 @@ function toolResult(name, args) {
   if (name === "queryTrainingLoadAssessment") {
     return "Training Load Assessment\n========================\n\n2026-11-06\nComment: Optimized\nShort-Term Load: 79\nLong-Term Load: 58\nLoad Ratio: 1.36";
   }
+  if (name === "queryUserInfo") {
+    return "User Profile Information\n========================\n\nHeight: 170.0 cm\nWeight: 62.0 kg\nBirthday: 1990-01-01 (Age: 36)\nGender: Male";
+  }
   if (name === "queryRecoveryStatus") throw new Error("not supported on this device");
   if (name === "createScheduledWorkout" || name === "updateScheduledWorkout") {
     const c = args.course;

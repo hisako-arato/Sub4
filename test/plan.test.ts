@@ -367,3 +367,34 @@ test("セリフ：達成した日は笑顔、ジョグが速すぎた日は怒�
   const jogDay = { ...today, main: { ...today.main!, hard: false, category: "jog" as const }, result: { state: "ran" as const, achievement: { level: "achieved" as const, flags: ["fast" as const], avgPace: "5:10" } } };
   assert.equal(coachSpeech(ctxBase(jogDay)).expression, "angry");
 });
+
+// ---- 段階5：栄養とケア ----
+import { nutritionFor } from "../src/care/nutrition.ts";
+import { careFor, STRETCHES } from "../src/care/care.ts";
+
+test("栄養：体重×目安（休養日・ロング走・カーボローディング・大会当日）", () => {
+  const rest = nutritionFor("2027-01-05", null, 62, "coros");
+  assert.deepEqual(rest.carbs.grams, [185, 310]);
+  assert.deepEqual(rest.protein.grams, [75, 85]);
+  const longDay = season(1.0).find((d) => d.main?.title === "30km走")!;
+  const lr = nutritionFor(longDay.date, longDay.main, 62, "coros");
+  assert.deepEqual(lr.carbs.perKg, [6, 8]);
+  assert.ok(lr.tips.some((t) => t.includes("30〜60g")));
+  for (const d of ["2027-03-12", "2027-03-13"]) assert.deepEqual(nutritionFor(d, null, 62, "coros").carbs.perKg, [8, 10], d);
+  const race = nutritionFor(RACE_DATE, null, 62, "coros");
+  assert.equal(race.dayType, "大会当日");
+  assert.ok(race.tips[0].includes("125g"), race.tips[0]);
+  assert.equal(nutritionFor("2026-12-19", null, 62, "manual").dayType, "大会前日");
+});
+
+test("ケア：痛みのときはストレッチを出さず受診を促す、ロング走のあとは5種", () => {
+  const pain = careFor(null, { pain: true });
+  assert.equal(pain.after.length, 0);
+  assert.match(pain.caution!, /受診/);
+  const longDay = season(1.0).find((d) => d.main?.title === "30km走")!;
+  assert.equal(careFor(longDay.main, { pain: false }).after.length, 5);
+  for (const day of season(1.0)) {
+    const c = careFor(day.main, { pain: false });
+    for (const id of [...c.before, ...c.after]) assert.ok(STRETCHES[id], id);
+  }
+});

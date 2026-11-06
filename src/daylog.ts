@@ -61,3 +61,13 @@ export async function saveSettings(env: Env, body: any): Promise<AchievementSett
 
 export const loadPainClearedAt = (env: Env) => kvGet<string>(env, K_PAIN_CLEARED);
 export const clearPain = (env: Env) => kvSet(env, K_PAIN_CLEARED, todayJst());
+
+// 体重（COROS の値を使い、アプリで上書きできる）
+const K_BODY = "settings:body";
+export const loadBody = async (env: Env) => (await kvGet<{ weightKg: number | null }>(env, K_BODY)) ?? { weightKg: null };
+export async function saveBody(env: Env, body: any) {
+  const w = Number(body?.weightKg);
+  const weightKg = w >= 30 && w <= 150 ? Math.round(w * 10) / 10 : null; // 空や不正な値は「COROS の値を使う」
+  await kvSet(env, K_BODY, { weightKg });
+  return { weightKg };
+}

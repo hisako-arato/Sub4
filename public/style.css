@@ -184,3 +184,9 @@ i.vo { background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--acc
 .bubble .more { position: absolute; right: 12px; bottom: 8px; color: var(--accent); font-size: 12px; animation: bob 1s ease-in-out infinite; }
 @keyframes bob { 50% { transform: translateY(3px); } }
 @media (prefers-reduced-motion: reduce) { .bubble .more { animation: none; } }
+/* ---- ケア・栄養 ---- */
+.care-title { font-weight: 700; margin: 4px 0 8px; }
+ul.stretches { list-style: none; padding: 0; margin: 0; }
+.stretch { border-top: 1px solid var(--border); padding: 8px 0; }
+.stretch ol { margin: 6px 0; padding-left: 22px; }
+.stretch .demo-btn { margin-left: 0; }

@@ -50,6 +50,22 @@
       <!-- 今日 -->
       <section id="today" class="card today"></section>
 
+      <!-- ケア -->
+      <section class="card">
+        <details id="care-box" open>
+          <summary><h2 class="inline">今日のケア</h2></summary>
+          <div id="care"></div>
+        </details>
+      </section>
+
+      <!-- 栄養 -->
+      <section class="card">
+        <details id="nutrition-box">
+          <summary><h2 class="inline">今日の栄養</h2> <span class="muted" id="nutrition-sum"></span></summary>
+          <div id="nutrition"></div>
+        </details>
+      </section>
+
       <!-- 2週間 -->
       <section class="card">
         <h2>2週間の練習</h2>
@@ -94,6 +110,14 @@
             <label>ペース 目安の範囲 ± <input type="number" id="set-pace" min="0" max="60" step="1"> 秒/km 以内</label>
             <button type="submit" class="small">保存</button>
             <span class="msg" id="settings-msg"></span>
+          </form>
+
+          <h3>体重</h3>
+          <form id="body-form" class="settings">
+            <label>体重 <input type="number" id="set-weight" min="30" max="150" step="0.1"> kg</label>
+            <p class="hint" id="weight-hint"></p>
+            <button type="submit" class="small">保存</button>
+            <span class="msg" id="body-msg"></span>
           </form>
 
           <h3>COROS 接続</h3>

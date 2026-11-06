@@ -267,7 +267,56 @@ function renderVolume(plan) {
     <p class="hint">11月（前橋）・12月（台北）・3月（静岡）は大会の 42km を含みます。3月は大会日までの分です。</p>`;
 }
 
+function stretchItem(st) {
+  const hold = st.kind === "dynamic" ? "各10回" : `${st.holdSec}秒${st.sides ? "×左右" : ""}`;
+  return `<li class="stretch"><details>
+    <summary><strong>${esc(st.name)}</strong> <span class="muted">${esc(st.target)}・${hold}</span></summary>
+    <ol>${st.steps.map((x) => `<li>${esc(x)}</li>`).join("")}</ol>
+    <button class="small ghost demo-btn" data-id="${st.id}" data-name="${esc(st.name)}" hidden>見本を見せて</button>
+  </details></li>`;
+}
+
+function renderCare(plan) {
+  const c = plan.care;
+  if (!c) return;
+  let html = `<p class="care-title">${esc(c.title)}</p>`;
+  if (c.caution) html += `<div class="alert warn">${esc(c.caution)}</div>`;
+  if (c.before.length) html += `<h3>走る前（動的ストレッチ）</h3><ul class="stretches">${c.before.map(stretchItem).join("")}</ul>`;
+  if (c.after.length) html += `<h3>${plan.days[0]?.main ? "走ったあと" : "今日のストレッチ"}</h3><ul class="stretches">${c.after.map(stretchItem).join("")}</ul>`;
+  html += `<h3>セルフケア</h3><ul class="menu">${c.selfCare.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`;
+  $("care").innerHTML = html;
+  coachDemoReady && document.querySelectorAll(".demo-btn").forEach((b) => (b.hidden = false));
+}
+
+function renderNutrition(plan) {
+  const n = plan.nutrition;
+  if (!n) {
+    $("nutrition-sum").textContent = "";
+    $("nutrition").innerHTML = `<p class="muted">体重が分かりません。COROS と同期するか、設定で体重を入力してください。</p>`;
+    return;
+  }
+  const rng = (a) => `${a[0]}〜${a[1]}`;
+  $("nutrition-sum").textContent = `炭水化物 ${rng(n.carbs.grams)}g・たんぱく質 ${rng(n.protein.grams)}g`;
+  $("nutrition").innerHTML = `
+    <p class="care-title">${esc(n.dayType)}（体重 ${n.weightKg}kg${n.weightSource === "coros" ? "・COROS" : ""}）</p>
+    <table class="paces">
+      <tr><th>炭水化物</th><td><strong>${rng(n.carbs.grams)}g</strong>（${rng(n.carbs.perKg)}g/kg）<br><small class="muted">ご飯なら茶碗 約${rng(n.carbs.riceBowls)}杯分</small></td></tr>
+      <tr><th>たんぱく質</th><td><strong>${rng(n.protein.grams)}g</strong>（${rng(n.protein.perKg)}g/kg）<br><small class="muted">鶏むね肉なら 約${rng(n.protein.chickenG)}g分</small></td></tr>
+    </table>
+    <ul class="menu">${n.tips.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
+    <details><summary class="muted">食べ物の目安</summary>
+      <p><strong>炭水化物</strong>：${n.foods.carbs.map(esc).join("／")}</p>
+      <p><strong>たんぱく質</strong>：${n.foods.protein.map(esc).join("／")}</p>
+    </details>
+    <p class="hint">一般的なスポーツ栄養の目安です（1日の合計）。医学的な判断ではありません。体調不良が続くときは医療機関に相談してください。</p>`;
+}
+
 function renderSettings(plan) {
+  $("set-weight").value = plan.body?.weightKg ?? "";
+  $("set-weight").placeholder = plan.body?.corosWeightKg ? String(plan.body.corosWeightKg) : "";
+  $("weight-hint").textContent = plan.body?.corosWeightKg
+    ? `空欄なら COROS の体重（${plan.body.corosWeightKg}kg）を使います。`
+    : "COROS から体重を取れていません。入力してください。";
   const s = plan.settings;
   $("set-dist").value = s.distPct;
   $("set-pace").value = s.paceTolS;
@@ -323,6 +372,8 @@ async function loadPlan(connected) {
   renderAlerts(plan);
   renderToday(plan);
   renderDays(plan);
+  renderCare(plan);
+  renderNutrition(plan);
   renderPast(plan);
   renderVolume(plan);
   renderAbility(plan);
@@ -341,6 +392,7 @@ try {
   console.warn("coach unavailable", e);
 }
 let lastPlan = null;
+let coachDemoReady = false; // アバターがストレッチの見本を見せられるか
 
 async function doSync() {
   $("sync").disabled = true;
@@ -510,5 +562,13 @@ $("settings-form").addEventListener("submit", async (e) => {
     body: JSON.stringify({ distPct: Number($("set-dist").value), paceTolS: Number($("set-pace").value) }),
   });
   $("settings-msg").textContent = r.status === 200 ? "保存しました" : "保存できませんでした";
+  await loadPlan(false);
+});
+
+$("body-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const v = $("set-weight").value.trim();
+  const r = await api("/api/body", { method: "POST", body: JSON.stringify({ weightKg: v ? Number(v) : null }) });
+  $("body-msg").textContent = r.status === 200 ? "保存しました" : "保存できませんでした";
   await loadPlan(false);
 });

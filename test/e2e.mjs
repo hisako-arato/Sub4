@@ -158,6 +158,19 @@ await req("/api/choice", { method: "POST", body: JSON.stringify({ date: withSubs
 p3 = await (await req("/api/plan")).json();
 assert.equal(p3.days.find((d) => d.date === withSubs.date).choice, 1, "気分の練習の選択を保存");
 
+// 4e. ケアと栄養（体重は COROS → 上書き → 空欄で COROS に戻る）
+let p5 = await (await req("/api/plan")).json();
+assert.equal(p5.nutrition.weightKg, 62);
+assert.equal(p5.nutrition.weightSource, "coros");
+assert.ok(p5.care.after.length + p5.care.selfCare.length > 0);
+await req("/api/body", { method: "POST", body: JSON.stringify({ weightKg: 60 }) });
+p5 = await (await req("/api/plan")).json();
+assert.equal(p5.nutrition.weightKg, 60);
+assert.equal(p5.nutrition.weightSource, "manual");
+await req("/api/body", { method: "POST", body: JSON.stringify({ weightKg: null }) });
+p5 = await (await req("/api/plan")).json();
+assert.equal(p5.nutrition.weightKg, 62);
+
 // 5. Cron（期限が近いのでトークン更新される: 偽COROSは expires_in=3600）
 const before = status.coros.obtained_at;
 await new Promise((r) => setTimeout(r, 1100));

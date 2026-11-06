@@ -8,12 +8,14 @@ import { McpClient } from "./mcp.ts";
 import { loadActivities, loadPlanStart, loadSnapshot, syncFromCoros } from "./coros/sync.ts";
 import { computeAbility } from "./plan/ability.ts";
 import { generateWithHistory } from "./plan/generate.ts";
-import { clearPain, loadLogs, loadPainClearedAt, loadSettings, saveSettings, setChoice, setDayStatus } from "./daylog.ts";
+import { clearPain, loadBody, loadLogs, loadPainClearedAt, loadSettings, saveBody, saveSettings, setChoice, setDayStatus } from "./daylog.ts";
 import { addDays, daysBetween, RACE_DATE, todayJst, weekSpecFor, PHASE_JA } from "./plan/calendar.ts";
 import { fmtPace, fmtTime, predictTime } from "./plan/vdot.ts";
 import { loadPushed, pushWorkout } from "./coros/workout.ts";
 import { computeVolume } from "./plan/volume.ts";
 import { coachSpeech } from "./coach/speech.ts";
+import { careFor, STRETCHES } from "./care/care.ts";
+import { nutritionFor } from "./care/nutrition.ts";
 
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 
@@ -71,6 +73,7 @@ async function route(req: Request, env: Env): Promise<Response> {
     await setChoice(env, body.date, Number(body.choice));
     return json({ ok: true });
   }
+  if (p === "/api/body" && req.method === "POST") return json(await saveBody(env, await req.json().catch(() => ({}))));
   if (p === "/api/pain-clear" && req.method === "POST") {
     await clearPain(env);
     return json({ ok: true });
@@ -132,11 +135,20 @@ async function computePlan(env: Env) {
 }
 
 async function buildPlanResponse(env: Env) {
-  const [{ today, snapshot, ability, loadRatio, days, past, alerts, modes, settings, activities }, pushed, conn] = await Promise.all([
+  const [{ today, snapshot, ability, loadRatio, days, past, alerts, modes, settings, activities }, pushed, conn, body] = await Promise.all([
     computePlan(env),
     loadPushed(env),
     connectionStatus(env),
+    loadBody(env),
   ]);
+  // 今日のケアと栄養（選んだ気分の練習を優先）
+  const d0 = days[0];
+  const todaySession = d0 ? (d0.choice >= 0 && d0.subs[d0.choice]) || d0.main : null;
+  const yesterdayRace = activities.some((r) => r.date === addDays(today, -1) && r.distanceKm >= 40);
+  const carePlan = careFor(todaySession, { pain: modes.pain, raceDayAfter: yesterdayRace });
+  const corosWeight = snapshot?.user?.weightKg ?? null;
+  const weightKg = body.weightKg ?? corosWeight;
+  const nutrition = weightKg ? nutritionFor(today, todaySession, weightKg, body.weightKg ? "manual" : "coros") : null;
   const volume = computeVolume(ability, activities, days, today);
   const stale = !snapshot?.syncedAt || Date.now() / 1000 - snapshot.syncedAt > 36 * 3600;
   const tuneup = days.find((d) => d.main?.category === "race" && !/静岡/.test(d.main.title));
@@ -196,6 +208,13 @@ async function buildPlanResponse(env: Env) {
     past: past.filter((d) => d.date >= addDays(today, -7)),
     volume,
     coach,
+    care: {
+      ...carePlan,
+      before: carePlan.before.map((id) => STRETCHES[id]),
+      after: carePlan.after.map((id) => STRETCHES[id]),
+    },
+    nutrition,
+    body: { weightKg: body.weightKg, corosWeightKg: corosWeight },
     alerts,
     settings,
   };
