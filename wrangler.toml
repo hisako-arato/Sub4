@@ -1,4 +1,4 @@
-name = "sub4-coach"
+name = "sub4"
 main = "src/index.ts"
 compatibility_date = "2026-10-01"
 # 管理画面で登録した変数を、GitHub からの再デプロイで消さない

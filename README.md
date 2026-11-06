@@ -30,9 +30,9 @@ PC は不要。Cloudflare の管理画面と GitHub 連携だけでデプロイ�
 D1 データベース `sub4` は作成済み（ID は `wrangler.toml` に記入済み）。テーブルはアプリが初回アクセス時に自動で作る。
 
 1. 管理画面「Workers & Pages」→「Create」→「Import a repository」→ GitHub の `hisako-arato/Sub4` を選ぶ
-2. プロジェクト名は **`sub4-coach`**（`wrangler.toml` の `name` と一致させる）。ブランチは `ccr-4d387e48-agut1d`。他は既定のまま「Deploy」
+2. プロジェクト名は **`sub4`**（`wrangler.toml` の `name` と一致させる）。ブランチは `ccr-4d387e48-agut1d`。他は既定のまま「Deploy」
 3. デプロイ後、その Worker の「Settings」→「Variables and Secrets」→「Add」で、種類 **Secret**、名前 **`APP_PASSWORD`**、値にアプリのログインパスワードを入れて保存
-4. 表示される `https://sub4-coach.<サブドメイン>.workers.dev` をスマホで開き：
+4. 表示される `https://sub4.<サブドメイン>.workers.dev` をスマホで開き：
    1. パスワードでログイン
    2. 「COROSと接続」→ COROS アカウントでログインして許可
    3. 「取得テストを実行」→「結果をJSONで保存」
