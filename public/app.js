@@ -75,14 +75,8 @@ const fmtDur = (s) => {
   return h ? `${h}時間${m}分` : `${m}分`;
 };
 
-// サブの練習を選んだら端末に覚えておく（段階3で記録と連携予定）
-const choiceKey = (date) => `sub4-choice-${date}`;
-function getChoice(date) {
-  try { return Number(localStorage.getItem(choiceKey(date)) ?? -1); } catch { return -1; }
-}
-function setChoice(date, i) {
-  try { localStorage.setItem(choiceKey(date), String(i)); } catch {}
-}
+// 選んだ気分の練習はサーバーに保存（達成度の判定・時計への送信に使う）
+const getChoice = (date) => [...(lastPlan?.days ?? []), ...(lastPlan?.past ?? [])].find((d) => d.date === date)?.choice ?? -1;
 
 function sessionDetail(s) {
   return `<div class="sess">
@@ -99,13 +93,13 @@ function pushButton(day) {
 }
 
 function chosen(day) {
-  const i = getChoice(day.date);
+  const i = day.choice ?? -1;
   return i >= 0 && day.subs[i] ? day.subs[i] : day.main;
 }
 
 function renderChoices(day) {
   if (!day.main || !day.subs.length) return "";
-  const i = getChoice(day.date);
+  const i = day.choice ?? -1;
   const opts = [day.main, ...day.subs]
     .map((s, k) => `<button class="choice ${i === k - 1 ? "on" : ""}" data-date="${day.date}" data-i="${k - 1}">${k === 0 ? "メイン：" : "気分で："}${esc(s.title)}</button>`)
     .join("");
@@ -119,6 +113,65 @@ function actualLine(day) {
     .join("");
 }
 
+const REASON = { schedule: "予定", fatigue: "疲労", pain: "痛み" };
+const LEVEL = {
+  achieved: { cls: "lv-ok", text: "◎ 達成" },
+  partial: { cls: "lv-mid", text: "△ 一部" },
+  missed: { cls: "lv-ng", text: "✗ 未達" },
+  done: { cls: "lv-ok", text: "✓ 走った" },
+};
+const FLAG = { short: "距離が短め", fast: "ペースが速め", slow: "ペースが遅め" };
+
+/** 結果のラベル */
+function resultChip(day) {
+  const r = day.result;
+  if (!r) return "";
+  switch (r.state) {
+    case "ran":
+    case "ran_manual": {
+      const a = r.achievement;
+      const lv = LEVEL[a.level];
+      const detail = a.distPct != null ? `<small>距離 ${a.distPct}%・平均 ${a.avgPace ?? "-"}/km（目安 ${a.expected}）${a.flags.length ? "・" + a.flags.map((f) => FLAG[f]).join("・") : ""}</small>` : "";
+      return `<span class="lv ${lv.cls}">${lv.text}</span>${r.state === "ran_manual" ? "<small>（手動）</small>" : ""} ${detail}`;
+    }
+    case "extra":
+      return day.actual.some((a) => a.distanceKm >= 40) ? `<span class="lv lv-ok">🏁 大会</span>` : `<span class="lv lv-ok">＋ 予定外に走った</span>`;
+    case "off":
+      return `<span class="lv lv-rest">休み（予定なし）</span>`;
+    case "skipped":
+      return `<span class="lv lv-ng">走らなかった</span>${r.reason ? `<small>（${REASON[r.reason]}）</small>` : ""}`;
+    case "auto_skipped":
+      return `<span class="lv lv-ng">走らなかった</span><small>（未入力）</small>`;
+    default:
+      return "";
+  }
+}
+
+/** 記録ボタン（過去・今日） */
+function logButtons(day, isToday) {
+  if (day.actual.length) return ""; // COROS の活動があれば自動判定
+  const st = day.log?.status;
+  const b = (status, label, extra = "") => `<button class="small ghost log-btn" data-date="${day.date}" data-status="${status}" ${extra}>${label}</button>`;
+  let html = `<div class="logs" id="logs-${day.date}">`;
+  if (st) {
+    html += b("clear", "記録を取り消す");
+  } else {
+    if (day.main) html += `<button class="small ghost skip-open" data-date="${day.date}">走らなかった</button>`;
+    if (day.main || isToday) html += b("ran", "走った（手動）");
+    if (isToday && day.main) html += b("off", "今日は走る予定なし");
+  }
+  html += `<div class="reasons" id="reasons-${day.date}" hidden>理由（任意）：${["schedule", "fatigue", "pain", ""]
+    .map((r) => `<button class="small ghost log-btn" data-date="${day.date}" data-status="skipped" data-reason="${r}">${r ? REASON[r] : "なし"}</button>`)
+    .join("")}</div></div>`;
+  return html;
+}
+
+function renderAlerts(plan) {
+  $("alerts").innerHTML = (plan.alerts ?? [])
+    .map((a) => `<div class="alert ${a.level}">${esc(a.text)}${a.text.includes("痛み") ? ` <button class="small ghost" id="pain-clear">痛みは治った</button>` : ""}</div>`)
+    .join("");
+}
+
 function renderToday(plan) {
   const day = plan.days[0];
   if (!day) {
@@ -127,14 +180,19 @@ function renderToday(plan) {
   }
   const s = chosen(day);
   let html = `<div class="today-date">今日 ${mmdd(day.date)}（${day.weekday}）${day.holiday ? ` <span class="hol">${esc(day.holiday)}</span>` : ""}</div>`;
+  if (day.result && day.result.state !== "rest") {
+    html += `<div class="today-result">${resultChip(day)}</div>`;
+  }
   if (!s) {
-    html += `<div class="rest">${badge("rest")} <strong>今日は休養日</strong><p class="hint">しっかり休むのも練習のうち。軽いストレッチだけでもOK。</p></div>`;
+    const off = day.log?.status === "off";
+    html += `<div class="rest">${badge("rest")} <strong>${off ? "今日は走る予定なし" : "今日は休養日"}</strong><p class="hint">しっかり休むのも練習のうち。軽いストレッチだけでもOK。</p></div>`;
   } else {
     if (day.optional) html += `<p class="opt">任意：余裕があれば。走らなくても計画には影響しません。</p>`;
     html += sessionDetail(s) + renderChoices(day) + pushButton(day);
   }
   html += day.notes.map((n) => `<p class="note">💬 ${esc(n)}</p>`).join("");
   html += actualLine(day);
+  html += logButtons(day, true);
   $("today").innerHTML = html;
 }
 
@@ -145,15 +203,45 @@ function renderDays(plan) {
       const s = chosen(day);
       const wk = day.weekday === "土" ? "sat" : day.weekday === "日" || day.holiday ? "sun" : "";
       const head = `<span class="d ${wk}">${mmdd(day.date)}<small>${day.weekday}</small></span>`;
-      if (!s) return `<li class="day rest-day">${head}<span class="t muted">休養</span>${actualLine(day)}</li>`;
+      const off = day.log?.status === "off";
+      const offBtn = `<button class="small ghost log-btn" data-date="${day.date}" data-status="${off ? "clear" : "off"}">${off ? "予定なしを取り消す" : "この日は走る予定なし"}</button>`;
+      if (!s) {
+        return `<li class="day rest-day">${head}<span class="t muted">${off ? "走る予定なし" : "休養"}</span>${off ? offBtn : ""}${
+          day.notes.length ? `<p class="note">💬 ${esc(day.notes.join(" / "))}</p>` : ""}</li>`;
+      }
       return `<li class="day${day.optional ? " optional" : ""}"><details data-date="${day.date}"${openDays.has(day.date) ? " open" : ""}>
-        <summary>${head}${badge(s.category)}<span class="t">${day.optional ? "（任意）" : ""}${esc(s.title)}</span><span class="km">${s.distanceKm}km${day.pushed ? " ⌚" : ""}</span></summary>
+        <summary>${head}${badge(s.category)}<span class="t">${day.optional ? "（任意）" : ""}${esc(s.title)}</span><span class="km">${s.distanceKm}km${day.pushed ? " ⌚" : ""}${day.notes.length ? " 💬" : ""}</span></summary>
         ${day.holiday ? `<p class="hol">${esc(day.holiday)}</p>` : ""}
         ${sessionDetail(s)}${renderChoices(day)}${pushButton(day)}
         ${day.notes.map((n) => `<p class="note">💬 ${esc(n)}</p>`).join("")}
-      </details>${actualLine(day)}</li>`;
+        <div class="logs">${offBtn}</div>
+      </details></li>`;
     })
     .join("");
+}
+
+function renderPast(plan) {
+  const past = [...(plan.past ?? [])].reverse();
+  $("past").innerHTML = past.length
+    ? past
+        .map((day) => {
+          const p = day.planned ? (day.choice >= 0 && day.subs[day.choice]) || day.planned : null;
+          const wk = day.weekday === "土" ? "sat" : day.weekday === "日" || day.holiday ? "sun" : "";
+          return `<li class="day past-day">
+            <div class="row1"><span class="d ${wk}">${mmdd(day.date)}<small>${day.weekday}</small></span>
+              ${p ? `${badge(p.category)}<span class="t">${esc(p.title)} ${p.distanceKm}km</span>` : `<span class="t muted">予定なし</span>`}</div>
+            ${resultChip(day) ? `<div class="row2">${resultChip(day)}</div>` : ""}
+            ${actualLine(day)}${day.result?.state !== "rest" || day.log ? logButtons(day, false) : ""}
+          </li>`;
+        })
+        .join("")
+    : `<li class="muted">まだ記録がありません</li>`;
+}
+
+function renderSettings(plan) {
+  const s = plan.settings;
+  $("set-dist").value = s.distPct;
+  $("set-pace").value = s.paceTolS;
 }
 
 function renderAbility(plan) {
@@ -202,9 +290,12 @@ async function loadPlan(connected) {
     $("cond-load").className = `pill ${r > 1.5 ? "warn" : ""}`;
     $("cond-load").textContent = `負荷比 ${r.toFixed(2)}`;
   }
+  renderAlerts(plan);
   renderToday(plan);
   renderDays(plan);
+  renderPast(plan);
   renderAbility(plan);
+  renderSettings(plan);
   // まだ一度も同期していなければ自動で同期する
   if (connected && !st.syncedAt && !autoSynced) {
     autoSynced = true;
@@ -254,13 +345,38 @@ document.addEventListener("click", async (e) => {
     }
     return;
   }
+  const so = e.target.closest(".skip-open");
+  if (so) {
+    $(`reasons-${so.dataset.date}`).hidden = false;
+    return;
+  }
+  const lb = e.target.closest(".log-btn");
+  if (lb) {
+    const { date, status, reason } = lb.dataset;
+    let km = null;
+    if (status === "ran") {
+      const v = prompt("走った距離（km）。分からなければ空欄でOK", "");
+      if (v === null) return;
+      km = Number(v) || null;
+    }
+    lb.disabled = true;
+    const r = await api("/api/day", {
+      method: "POST",
+      body: JSON.stringify({ date, status: status === "clear" ? null : status, reason: reason || null, km }),
+    });
+    if (r.status !== 200) alert(r.body?.message || "記録できませんでした");
+    await loadPlan(false);
+    return;
+  }
+  if (e.target.id === "pain-clear") {
+    await api("/api/pain-clear", { method: "POST" });
+    await loadPlan(false);
+    return;
+  }
   const b = e.target.closest(".choice");
   if (!b) return;
-  setChoice(b.dataset.date, Number(b.dataset.i));
-  if (lastPlan) {
-    renderToday(lastPlan);
-    renderDays(lastPlan);
-  }
+  await api("/api/choice", { method: "POST", body: JSON.stringify({ date: b.dataset.date, choice: Number(b.dataset.i) }) });
+  await loadPlan(false);
 });
 
 function esc(s) {
@@ -349,3 +465,13 @@ if ([...params.keys()].length) history.replaceState(null, "", "/");
 
 updateCountdown();
 refresh();
+
+$("settings-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const r = await api("/api/settings", {
+    method: "POST",
+    body: JSON.stringify({ distPct: Number($("set-dist").value), paceTolS: Number($("set-pace").value) }),
+  });
+  $("settings-msg").textContent = r.status === 200 ? "保存しました" : "保存できませんでした";
+  await loadPlan(false);
+});

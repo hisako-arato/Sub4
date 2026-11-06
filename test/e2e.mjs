@@ -134,6 +134,30 @@ if (restDay) {
   assert.equal(res.status, 400);
 }
 
+// 4d. 日々の記録
+const yesterday = new Date(Date.parse(plan.today + "T00:00:00Z") - 86400000).toISOString().slice(0, 10);
+const futureDay = plan.days.find((d) => d.main && d.date > plan.today);
+res = await req("/api/day", { method: "POST", body: JSON.stringify({ date: futureDay.date, status: "off" }) });
+assert.equal(res.status, 200);
+let p3 = await (await req("/api/plan")).json();
+assert.equal(p3.days.find((d) => d.date === futureDay.date).main, null, "予定なしの日は休み");
+res = await req("/api/day", { method: "POST", body: JSON.stringify({ date: futureDay.date, status: "skipped" }) });
+assert.equal(res.status, 400, "未来の日に「走らなかった」は不可");
+res = await req("/api/day", { method: "POST", body: JSON.stringify({ date: yesterday, status: "skipped", reason: "pain" }) });
+assert.equal(res.status, 200);
+p3 = await (await req("/api/plan")).json();
+assert.ok(p3.alerts.some((a) => a.text.includes("受診")), "痛みの記録で受診を促す");
+assert.equal(p3.past.find((d) => d.date === yesterday).result.state, "skipped");
+res = await req("/api/pain-clear", { method: "POST" });
+p3 = await (await req("/api/plan")).json();
+assert.ok(!p3.alerts.some((a) => a.text.includes("受診")), "治ったら解除");
+res = await req("/api/settings", { method: "POST", body: JSON.stringify({ distPct: 85, paceTolS: 15 }) });
+assert.deepEqual(await res.json(), { distPct: 85, paceTolS: 15 });
+const withSubs = p3.days.find((d) => d.subs.length);
+await req("/api/choice", { method: "POST", body: JSON.stringify({ date: withSubs.date, choice: 1 }) });
+p3 = await (await req("/api/plan")).json();
+assert.equal(p3.days.find((d) => d.date === withSubs.date).choice, 1, "気分の練習の選択を保存");
+
 // 5. Cron（期限が近いのでトークン更新される: 偽COROSは expires_in=3600）
 const before = status.coros.obtained_at;
 await new Promise((r) => setTimeout(r, 1100));

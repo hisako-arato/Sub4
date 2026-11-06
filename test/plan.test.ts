@@ -3,8 +3,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseFitness, parseSportRecords, parseTrainingLoad, type Activity } from "../src/coros/parse.ts";
 import { computeAbility } from "../src/plan/ability.ts";
-import { generatePlan } from "../src/plan/generate.ts";
-import { addDays, isHoliday, RACE_DATE, weekday, weekSpecFor } from "../src/plan/calendar.ts";
+import { buildBaseDays, expectedPaceRange, generatePlan, generateWithHistory } from "../src/plan/generate.ts";
+import { addDays, daysBetween, isHoliday, RACE_DATE, weekday, weekSpecFor } from "../src/plan/calendar.ts";
 
 // COROS の実際の書式に合わせた架空データ
 const RECORDS = `Sport Records — 2026-09-01 to 2026-11-06 (3 records)
@@ -83,12 +83,24 @@ test("大会を検出し、ペースを控えめに設定する", () => {
   assert.ok(Math.abs(a.paces.goal - 340) < 1, "サブ4目標ペースは約5:40/km");
 });
 
-// シーズン全体を2週間ずつ生成して安全原則を確かめる
+// 計画どおりに走った活動を作る（シーズン全体のテスト用）
+const A = computeAbility(acts, fitness, "2026-11-07");
+function followPlan(until: string, skip: (date: string) => boolean = () => false): Activity[] {
+  const out = [...acts];
+  for (const d of buildBaseDays(A, acts, "2026-11-07", until, 1.0)) {
+    if (!d.main || d.optional || d.date >= until || skip(d.date)) continue;
+    const [f, sl] = expectedPaceRange(d.main.steps);
+    const km = d.main.distanceKm;
+    out.push({ labelId: `sim-${d.date}`, sportType: 100, title: "Outdoor Run", date: d.date, distanceKm: km, durationS: Math.round(((f + sl) / 2) * km) });
+  }
+  return out;
+}
+
+// シーズン全体を2週間ずつ生成して安全原則を確かめる（計画どおり走っている前提）
 function season(loadRatio: number | null) {
-  const a = computeAbility(acts, fitness, "2026-11-07");
   const all = new Map<string, ReturnType<typeof generatePlan>[number]>();
   for (let d = "2026-11-07"; d <= RACE_DATE; d = addDays(d, 14)) {
-    for (const day of generatePlan(a, acts, { today: d, loadRatio })) if (!all.has(day.date)) all.set(day.date, day);
+    for (const day of generatePlan(A, followPlan(d), { today: d, loadRatio })) if (!all.has(day.date)) all.set(day.date, day);
   }
   return [...all.values()];
 }
@@ -118,8 +130,7 @@ test("基本は月・水・週末、任意ジョグは余裕のある週だけ",
 });
 
 test("負荷比が高いと任意ジョグを出さず、直近の高強度を軽くする", () => {
-  const a = computeAbility(acts, fitness, "2026-11-07");
-  const hi = generatePlan(a, acts, { today: "2027-01-04", loadRatio: 1.6 });
+  const hi = generatePlan(A, followPlan("2027-01-04"), { today: "2027-01-04", loadRatio: 1.6 });
   assert.ok(!hi.some((d) => d.optional));
   assert.ok(!hi.slice(0, 7).some((d) => d.main?.hard), "7日以内に高強度が残っている");
   assert.ok(hi.slice(7).some((d) => d.main?.hard), "8日目以降は通常どおり");
@@ -182,4 +193,117 @@ test("インターバルは アップ→繰り返し→ダウン になる", () 
   const c = toCourse(day.main!) as any;
   assert.deepEqual(c.sections.map((s: any) => (s.intervalGroup ? "repeat" : s.sectionType)), [1, "repeat", 4]);
   assert.equal(c.sections[1].sets[0].targetValue, 1000);
+});
+
+
+// ---- 段階3：記録・達成度・自動調整 ----
+import { evaluate, DEFAULT_SETTINGS } from "../src/plan/adjust.ts";
+
+const TODAY = "2027-01-13"; // 水曜（強化期）
+const run = (date: string, km: number, pace: number): Activity => ({ labelId: `x-${date}`, sportType: 100, title: "Outdoor Run", date, distanceKm: km, durationS: Math.round(km * pace) });
+
+test("達成度：距離90%以上かつ目安ペース±10秒で達成", () => {
+  const day = buildBaseDays(A, acts, "2027-01-09", "2027-01-09", 1.0)[0]; // 22km ロング走
+  const s = day.main!;
+  const [f, sl] = expectedPaceRange(s.steps);
+  assert.equal(evaluate(s, [run(day.date, 22, (f + sl) / 2)], DEFAULT_SETTINGS).level, "achieved");
+  assert.equal(evaluate(s, [run(day.date, 18, (f + sl) / 2)], DEFAULT_SETTINGS).level, "partial");
+  assert.equal(evaluate(s, [run(day.date, 8, (f + sl) / 2)], DEFAULT_SETTINGS).level, "missed");
+  const fast = evaluate(s, [run(day.date, 22, f - 30)], DEFAULT_SETTINGS);
+  assert.ok(fast.flags.includes("fast"));
+  // しきい値を変えると判定が変わる
+  assert.equal(evaluate(s, [run(day.date, 18, (f + sl) / 2)], { distPct: 80, paceTolS: 10 }).level, "achieved");
+});
+
+test("未入力のまま過ぎた日は「走らなかった」扱い、走った日は自動判定", () => {
+  const r = generateWithHistory(A, followPlan(TODAY, (d) => d === "2027-01-11"), { today: TODAY, loadRatio: 1.0 });
+  const mon = r.past.find((d) => d.date === "2027-01-11")!;
+  assert.equal(mon.result?.state, "auto_skipped");
+  const sat = r.past.find((d) => d.date === "2027-01-09")!;
+  assert.equal(sat.result?.state, "ran");
+  assert.equal(sat.result?.achievement?.level, "achieved");
+});
+
+test("走らなかった大事な練習は、今週の空いている土日祝に7割で移す（週1回まで）", () => {
+  // 今日=土曜 1/16 の MP 走を「走らなかった」→ 日曜に短縮して移す
+  const today = "2027-01-17";
+  const logs = { "2027-01-16": { status: "skipped" as const, reason: "schedule" as const } };
+  const r = generateWithHistory(A, followPlan(today, (d) => d === "2027-01-16"), { today, loadRatio: 1.0, logs });
+  const sun = r.days[0];
+  assert.equal(sun.date, today);
+  assert.equal(sun.main?.category, "pace");
+  assert.match(sun.main!.title, /短縮/);
+  assert.ok(sun.main!.distanceKm < 16);
+  assert.ok(sun.notes.some((n) => n.includes("移した")));
+});
+
+test("「走る予定はない」日の練習は、短縮せずに移す（ペナルティなし）", () => {
+  const today = "2027-01-14"; // 木
+  const logs = { "2027-01-16": { status: "off" as const } }; // 土は予定なし
+  const r = generateWithHistory(A, followPlan(today), { today, loadRatio: 1.0, logs });
+  assert.equal(r.days.find((d) => d.date === "2027-01-16")!.main, null);
+  const sun = r.days.find((d) => d.date === "2027-01-17")!;
+  assert.equal(sun.main?.title, "マラソンペース走");
+});
+
+test("平日にロング走は移さない", () => {
+  const today = "2027-01-10"; // 日
+  const logs = { "2027-01-09": { status: "skipped" as const } }; // 土の22kmを休んだ
+  const r = generateWithHistory(A, followPlan(today, (d) => d === "2027-01-09"), { today, loadRatio: 1.0, logs });
+  for (const d of r.days.filter((x) => x.date < "2027-01-11")) {
+    if (d.main?.category === "distance") assert.ok([5, 6].includes(weekday(d.date)) || isHoliday(d.date), d.date);
+  }
+  // 翌週以降の月〜金に 12km 超を入れない（祝日を除く）
+  for (const d of r.days) {
+    if (d.main && d.main.distanceKm > 12 && weekday(d.date) < 5) assert.ok(isHoliday(d.date), `${d.date} ${d.main.title}`);
+  }
+});
+
+test("痛み：2日は休養、その後も短いジョグだけで受診を促す", () => {
+  const logs = { "2027-01-12": { status: "skipped" as const, reason: "pain" as const } };
+  const r = generateWithHistory(A, followPlan(TODAY, (d) => d === "2027-01-12"), { today: TODAY, loadRatio: 1.0, logs });
+  assert.ok(r.modes.pain);
+  assert.ok(r.alerts.some((x) => x.text.includes("受診")));
+  for (const d of r.days.slice(0, 7)) {
+    if (daysBetween("2027-01-12", d.date) <= 2) assert.equal(d.main, null, d.date);
+    else if (d.main) assert.ok(!d.main.hard && d.main.distanceKm <= 5, d.date);
+  }
+  // 「治った」を記録すると解除
+  const r2 = generateWithHistory(A, followPlan(TODAY, (d) => d === "2027-01-12"), { today: TODAY, loadRatio: 1.0, logs, painClearedAt: TODAY });
+  assert.ok(!r2.modes.pain);
+});
+
+test("疲労：直近7日の高強度を下げる", () => {
+  const logs = { "2027-01-11": { status: "skipped" as const, reason: "fatigue" as const } };
+  const r = generateWithHistory(A, followPlan(TODAY, (d) => d === "2027-01-11"), { today: TODAY, loadRatio: 1.0, logs });
+  assert.ok(r.modes.fatigue);
+  for (const d of r.days.slice(0, 7)) if (d.main?.category === "speed" || d.main?.category === "pace") assert.ok(!d.main.hard, d.date);
+});
+
+test("数日空いた後は、次の2回は強度を上げない", () => {
+  // 1/4〜1/12 を全部休んだ
+  const r = generateWithHistory(A, followPlan(TODAY, (d) => d >= "2027-01-04"), { today: TODAY, loadRatio: 1.0 });
+  assert.ok(r.modes.comeback);
+  const next2 = r.days.filter((d) => d.main).slice(0, 2);
+  for (const d of next2) assert.ok(!d.main!.hard, d.date);
+});
+
+test("ロング走は最近の最長距離＋6kmまで", () => {
+  // 12月から全く走っていない状態で 1/25 週の 26km は伸ばしすぎない
+  const today = "2027-01-25";
+  const r = generateWithHistory(A, followPlan("2026-12-01"), { today, loadRatio: 1.0 });
+  for (const d of r.days) if (d.main && d.main.category !== "race") assert.ok(d.main.distanceKm <= 12.5 + 6 * 2, `${d.date} ${d.main.distanceKm}`);
+});
+
+test("大会の週は大会の距離を練習量に数えない（回復ジョグを短縮しない）", () => {
+  const r = generateWithHistory(A, acts, { today: "2026-11-07", loadRatio: 1.0 });
+  const sat = r.days[0];
+  assert.equal(sat.main?.title, "ゆったりジョグ");
+  assert.equal(sat.main?.distanceKm, 5);
+});
+
+test("使い始める前の日は「走らなかった」と判定しない", () => {
+  const r = generateWithHistory(A, acts, { today: "2026-11-07", loadRatio: 1.0, planStart: "2026-11-06" });
+  for (const d of r.past) assert.ok(!["auto_skipped", "skipped"].includes(d.result?.state ?? ""), d.date);
+  assert.equal(r.past.find((d) => d.date === "2026-11-03")?.result?.state, "extra");
 });

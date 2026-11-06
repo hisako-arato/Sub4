@@ -37,6 +37,8 @@
       </section>
       <p class="msg" id="sync-msg"></p>
 
+      <div id="alerts"></div>
+
       <!-- 今日 -->
       <section id="today" class="card today"></section>
 
@@ -52,6 +54,13 @@
         </p>
       </section>
 
+      <!-- 最近の記録 -->
+      <section class="card">
+        <h2>最近の記録</h2>
+        <p class="hint">COROS の活動は自動で反映されます。走らなかった日や、同期できなかった日だけ記録してください。</p>
+        <ul id="past" class="days"></ul>
+      </section>
+
       <!-- 走力 -->
       <section class="card">
         <details>
@@ -64,6 +73,14 @@
       <section class="card">
         <details id="settings">
           <summary><h2 class="inline">設定・COROS接続</h2></summary>
+
+          <h3>達成の判定</h3>
+          <form id="settings-form" class="settings">
+            <label>距離 <input type="number" id="set-dist" min="50" max="100" step="1"> % 以上</label>
+            <label>ペース 目安の範囲 ± <input type="number" id="set-pace" min="0" max="60" step="1"> 秒/km 以内</label>
+            <button type="submit" class="small">保存</button>
+            <span class="msg" id="settings-msg"></span>
+          </form>
 
           <h3>COROS 接続</h3>
           <p id="coros-state">確認中…</p>

@@ -8,6 +8,7 @@ import {
   addDays, HOLIDAYS, isHoliday, mondayOf, PHASE_JA, RACE_DATE, weekday, weekSpecFor, WEEKDAY_JA, type Phase, type WeekSpec,
 } from "./calendar.ts";
 import { fmtPace } from "./vdot.ts";
+import { adjustPlan, type AchievementSettings, type DayLog, type DayResult } from "./adjust.ts";
 
 export type Category = "speed" | "pace" | "distance" | "jog" | "race";
 
@@ -35,6 +36,10 @@ const time = (kind: "warmup" | "training" | "recovery" | "cooldown", sec: number
 
 export interface DayPlan {
   date: string;
+  planned: Session | null; // 調整前の練習（達成度の判定・組み直しに使う）
+  choice: number; // 選んだ気分の練習（-1 はメイン）
+  log: DayLog | null;
+  result: DayResult | null; // 過去と今日の結果
   weekday: string;
   holiday?: string;
   phase: Phase | null;
@@ -50,10 +55,14 @@ export interface PlanOptions {
   today: string;
   days?: number;
   loadRatio?: number | null; // COROS のトレーニング負荷比（短期/長期）
+  recoveryPercent?: number | null;
+  logs?: Record<string, DayLog>;
+  settings?: AchievementSettings;
+  painClearedAt?: string | null;
+  planStart?: string | null; // アプリを使い始めた日。これより前は「走らなかった」と判定しない
 }
 
 const OPTIONAL_LOAD_LIMIT = 1.3; // これ以下なら4回目ジョグを出す
-const DOWNGRADE_LOAD_LIMIT = 1.5; // これを超えたら直近7日の高強度を軽くする
 
 const range = (p: [number, number]) => `${fmtPace(p[0])}〜${fmtPace(p[1])}/km`;
 const r1 = (n: number) => Math.round(n * 10) / 10;
@@ -298,49 +307,24 @@ function buildWeek(spec: WeekSpec, a: Ability, loadRatio: number | null | undefi
   return { sessions };
 }
 
-export function generatePlan(a: Ability, activities: Activity[], opts: PlanOptions): DayPlan[] {
-  const days = opts.days ?? 14;
+/** 計画のもと（調整前）を from〜to で作る */
+export function buildBaseDays(a: Ability, activities: Activity[], from: string, to: string, loadRatio: number | null | undefined): DayPlan[] {
   const weekCache = new Map<string, WeekPlan | null>();
   const runsByDate = new Map<string, Activity[]>();
   for (const act of activities.filter(isRun)) runsByDate.set(act.date, [...(runsByDate.get(act.date) ?? []), act]);
-
   const getWeek = (date: string) => {
     const mon = mondayOf(date);
     if (!weekCache.has(mon)) {
       const spec = weekSpecFor(date);
-      weekCache.set(mon, spec ? buildWeek(spec, a, opts.loadRatio) : null);
+      weekCache.set(mon, spec ? buildWeek(spec, a, loadRatio) : null);
     }
     return weekCache.get(mon)!;
   };
-
   const out: DayPlan[] = [];
-  let prevHard = false;
-  // 前日（表示範囲外）が高強度かどうかも見る
-  {
-    const y = addDays(opts.today, -1);
-    prevHard = !!getWeek(y)?.sessions.get(y)?.main.hard;
-  }
-
-  for (let i = 0; i < days; i++) {
-    const date = addDays(opts.today, i);
-    if (date > RACE_DATE) break;
+  for (let date = from; date <= to && date <= RACE_DATE; date = addDays(date, 1)) {
     const spec = weekSpecFor(date);
     const entry = getWeek(date)?.sessions.get(date);
-    let main = entry?.main ?? null;
-    const notes = [...(entry?.notes ?? [])];
-
-    // 安全原則：負荷比が高いときは直近7日の高強度を軽くする
-    if (main?.hard && main.category !== "race" && i < 7 && opts.loadRatio != null && opts.loadRatio > DOWNGRADE_LOAD_LIMIT) {
-      main = jog(a, Math.min(main.distanceKm, 8));
-      notes.push(`負荷比が ${opts.loadRatio.toFixed(2)} と高いので、今日は軽めのジョグにしたよ`);
-    }
-    // 安全原則：高強度を2日続けない
-    if (main?.hard && prevHard && main.category !== "race") {
-      main = jog(a, Math.min(main.distanceKm, 6));
-      notes.push("前日がきつい練習なので、今日は軽めにしたよ");
-    }
-    prevHard = !!main?.hard;
-
+    const main = entry?.main ?? null;
     out.push({
       date,
       weekday: WEEKDAY_JA[weekday(date)],
@@ -348,11 +332,93 @@ export function generatePlan(a: Ability, activities: Activity[], opts: PlanOptio
       phase: spec?.phase ?? null,
       phaseLabel: spec ? PHASE_JA[spec.phase] + (spec.down ? "（軽めの週）" : "") : null,
       main,
+      planned: main,
       subs: main ? subsFor(main, a) : [],
       optional: !!entry?.optional,
-      notes,
+      notes: [...(entry?.notes ?? [])],
       actual: (runsByDate.get(date) ?? []).map((r) => ({ distanceKm: r.distanceKm, durationS: r.durationS, avgHr: r.avgHr, title: r.title })),
+      choice: -1,
+      log: null,
+      result: null,
     });
   }
   return out;
+}
+
+// ---- 調整で使う部品 ----
+
+/** 練習が「大事な練習」（休んだら組み直す対象）か */
+export const isKey = (s: Session | null) => !!s && s.category !== "race" && (s.hard || (s.category === "distance" && s.distanceKm >= 12));
+
+type Plain = Extract<Step, { pace: [number, number] }>;
+const flat = (steps: Step[]): { step: Plain; times: number }[] =>
+  steps.flatMap((st) => (st.kind === "repeat" ? st.steps.flatMap((x) => flat([x]).map((f) => ({ step: f.step, times: f.times * st.times }))) : [{ step: st, times: 1 }]));
+const slowOf = (st: Plain) => Math.min(st.pace[1], st.pace[0] + 90); // 歩き（1499）はジョグ程度に見積もる
+const kmOf = (st: Plain) => (st.distanceM !== undefined ? st.distanceM / 1000 : st.timeS! / ((st.pace[0] + slowOf(st)) / 2));
+
+export function stepsKm(steps: Step[]): number {
+  return r1(flat(steps).reduce((s, f) => s + kmOf(f.step) * f.times, 0));
+}
+
+/** 練習全体の平均ペースの見込み（速い側, 遅い側）秒/km */
+export function expectedPaceRange(steps: Step[]): [number, number] {
+  let km = 0, fast = 0, slow = 0;
+  for (const f of flat(steps)) {
+    const k = kmOf(f.step) * f.times;
+    km += k;
+    fast += f.step.pace[0] * k;
+    slow += slowOf(f.step) * k;
+  }
+  return km ? [fast / km, slow / km] : [0, 0];
+}
+
+const paceText = (p: [number, number]) =>
+  p[1] >= 1400 ? "歩き〜ジョグ" : Math.abs(p[1] - p[0]) <= 10 ? `${fmtPace((p[0] + p[1]) / 2)}/km` : `${fmtPace(p[0])}〜${fmtPace(p[1])}/km`;
+const amount = (st: Plain) => (st.distanceM !== undefined ? (st.distanceM >= 1000 ? `${r1(st.distanceM / 1000)}km` : `${st.distanceM}m`) : `${Math.round(st.timeS! / 60)}分`);
+
+/** 区間から説明文を作る */
+export function describeSteps(steps: Step[]): string[] {
+  return steps.map((st) => {
+    if (st.kind === "repeat") {
+      const [work, ...rest] = st.steps as Plain[];
+      const rec = rest.length ? `（つなぎ ${amount(rest[0])}）` : "";
+      return `${amount(work)} × ${st.times}本（${paceText(work.pace)}）${rec}`;
+    }
+    const label = st.kind === "warmup" ? "アップ " : st.kind === "cooldown" ? "ダウン " : "";
+    return `${label}${amount(st)}（${paceText(st.pace)}）`;
+  });
+}
+
+/** 練習を f 倍の量にする（アップ・ダウンはそのまま、繰り返しは本数を減らす） */
+export function scaleSession(s: Session, f: number): Session {
+  const steps: Step[] = s.steps.map((st) => {
+    if (st.kind === "repeat") return { ...st, times: Math.max(2, Math.round(st.times * f)) };
+    if (st.kind !== "training") return st;
+    return st.distanceM !== undefined
+      ? { ...st, distanceM: Math.max(1000, Math.round((st.distanceM * f) / 500) * 500) }
+      : { ...st, timeS: Math.max(600, Math.round((st.timeS! * f) / 60) * 60) };
+  });
+  const km = stepsKm(steps);
+  return {
+    ...s,
+    title: s.title.replace(/（短縮）$/, "") + "（短縮）",
+    steps,
+    distanceKm: km,
+    menu: describeSteps(steps),
+    hard: s.hard && (s.category !== "distance" || km >= 16),
+  };
+}
+
+export { jog, subsFor };
+
+export function generatePlan(a: Ability, activities: Activity[], opts: PlanOptions): DayPlan[] {
+  return generateWithHistory(a, activities, opts).days;
+}
+
+/** 過去の記録を踏まえて調整した計画（先頭が今日）と、過去の結果 */
+export function generateWithHistory(a: Ability, activities: Activity[], opts: PlanOptions) {
+  const days = opts.days ?? 14;
+  const from = addDays(mondayOf(opts.today), -7);
+  const base = buildBaseDays(a, activities, from, addDays(opts.today, days - 1), opts.loadRatio);
+  return adjustPlan(base, a, activities, opts);
 }

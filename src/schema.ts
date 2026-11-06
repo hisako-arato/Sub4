@@ -34,6 +34,17 @@ const MIGRATIONS: string[][] = [
     )`,
     `CREATE INDEX IF NOT EXISTS activities_date ON activities (date)`,
   ],
+  // 3: 日々の記録
+  [
+    `CREATE TABLE IF NOT EXISTS day_log (
+      date       TEXT PRIMARY KEY,
+      status     TEXT,
+      reason     TEXT,
+      km         REAL,
+      choice     INTEGER,
+      updated_at INTEGER NOT NULL
+    )`,
+  ],
 ];
 
 let ready: Promise<void> | null = null;

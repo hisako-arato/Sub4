@@ -18,6 +18,8 @@ export interface Snapshot {
 }
 
 const K_SNAPSHOT = "coros:snapshot";
+const K_PLAN_START = "app:plan_start";
+export const loadPlanStart = (env: Env) => kvGet<string>(env, K_PLAN_START);
 const ymd = (d: string) => d.replace(/-/g, "");
 
 export async function syncFromCoros(env: Env, opts: { days?: number } = {}): Promise<{ activities: number; snapshot: Snapshot }> {
@@ -76,6 +78,8 @@ export async function syncFromCoros(env: Env, opts: { days?: number } = {}): Pro
     errors,
   };
   await kvSet(env, K_SNAPSHOT, snapshot);
+  // 初回同期の日を「計画の開始日」として記録（それより前の日は達成度を判定しない）
+  if (!(await kvGet<string>(env, K_PLAN_START))) await kvSet(env, K_PLAN_START, today);
   return { activities: activities.length, snapshot };
 }
 

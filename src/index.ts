@@ -5,9 +5,10 @@ import { AuthRequiredError } from "./mcp.ts";
 import { runProbe } from "./probe.ts";
 import { ensureSchema } from "./schema.ts";
 import { McpClient } from "./mcp.ts";
-import { loadActivities, loadSnapshot, syncFromCoros } from "./coros/sync.ts";
+import { loadActivities, loadPlanStart, loadSnapshot, syncFromCoros } from "./coros/sync.ts";
 import { computeAbility } from "./plan/ability.ts";
-import { generatePlan } from "./plan/generate.ts";
+import { generateWithHistory } from "./plan/generate.ts";
+import { clearPain, loadLogs, loadPainClearedAt, loadSettings, saveSettings, setChoice, setDayStatus } from "./daylog.ts";
 import { addDays, daysBetween, RACE_DATE, todayJst, weekSpecFor, PHASE_JA } from "./plan/calendar.ts";
 import { fmtPace, fmtTime, predictTime } from "./plan/vdot.ts";
 import { loadPushed, pushWorkout } from "./coros/workout.ts";
@@ -57,13 +58,30 @@ async function route(req: Request, env: Env): Promise<Response> {
 
   if (p === "/api/plan") return json(await buildPlanResponse(env));
 
+  // 日々の記録
+  if (p === "/api/day" && req.method === "POST") {
+    const err = await setDayStatus(env, await req.json().catch(() => ({})));
+    return err ? json({ error: "bad_request", message: err }, 400) : json({ ok: true });
+  }
+  if (p === "/api/choice" && req.method === "POST") {
+    const body = (await req.json().catch(() => ({}))) as { date?: string; choice?: number };
+    if (!body.date || !/^\d{4}-\d{2}-\d{2}$/.test(body.date)) return json({ error: "bad_request" }, 400);
+    await setChoice(env, body.date, Number(body.choice));
+    return json({ ok: true });
+  }
+  if (p === "/api/pain-clear" && req.method === "POST") {
+    await clearPain(env);
+    return json({ ok: true });
+  }
+  if (p === "/api/settings" && req.method === "POST") return json(await saveSettings(env, await req.json().catch(() => ({}))));
+
   // 練習を時計（COROS の予定）に送る
   if (p === "/api/push" && req.method === "POST") {
     const body = (await req.json().catch(() => ({}))) as { date?: string; choice?: number };
     const { days } = await computePlan(env);
     const day = days.find((d) => d.date === body.date);
     if (!day) return json({ error: "bad_date", message: "2週間の計画の中の日付だけ送れます" }, 400);
-    const choice = Number(body.choice ?? -1);
+    const choice = day.choice >= 0 ? day.choice : Number(body.choice ?? -1);
     const session = choice >= 0 ? day.subs[choice] : day.main;
     if (!session) return json({ error: "rest_day", message: "休養日なので送る練習はありません" }, 400);
     try {
@@ -95,15 +113,24 @@ async function route(req: Request, env: Env): Promise<Response> {
 
 async function computePlan(env: Env) {
   const today = todayJst();
-  const [snapshot, activities] = await Promise.all([loadSnapshot(env), loadActivities(env, addDays(today, -150))]);
+  const [snapshot, activities, logs, settings, painClearedAt, planStart] = await Promise.all([
+    loadSnapshot(env),
+    loadActivities(env, addDays(today, -150)),
+    loadLogs(env, addDays(today, -60)),
+    loadSettings(env),
+    loadPainClearedAt(env),
+    loadPlanStart(env),
+  ]);
   const ability = computeAbility(activities, snapshot?.fitness ?? null, today);
   const loadRatio = snapshot?.load?.[0]?.ratio ?? null;
-  const days = generatePlan(ability, activities, { today, loadRatio });
-  return { today, snapshot, ability, loadRatio, days };
+  const { days, past, alerts } = generateWithHistory(ability, activities, {
+    today, loadRatio, recoveryPercent: snapshot?.recovery?.percent ?? null, logs, settings, painClearedAt, planStart,
+  });
+  return { today, snapshot, ability, loadRatio, days, past, alerts, settings };
 }
 
 async function buildPlanResponse(env: Env) {
-  const [{ today, snapshot, ability, loadRatio, days }, pushed] = await Promise.all([computePlan(env), loadPushed(env)]);
+  const [{ today, snapshot, ability, loadRatio, days, past, alerts, settings }, pushed] = await Promise.all([computePlan(env), loadPushed(env)]);
   const spec = weekSpecFor(today);
   const syncedAt = snapshot?.syncedAt ?? null;
   const p = ability.paces;
@@ -145,6 +172,9 @@ async function buildPlanResponse(env: Env) {
       history: ability.history,
     },
     days: days.map((d) => ({ ...d, pushed: pushed[d.date] ? { title: pushed[d.date].title, at: pushed[d.date].at } : null })),
+    past: past.filter((d) => d.date >= addDays(today, -7)),
+    alerts,
+    settings,
   };
 }
 

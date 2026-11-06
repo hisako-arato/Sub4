@@ -137,3 +137,25 @@ table.paces td { font-variant-numeric: tabular-nums; }
 .push button.small { margin-left: 0; }
 .pushed { font-size: 13px; color: var(--ok); font-weight: 600; }
 .push-msg { flex-basis: 100%; margin: 0; font-size: 13px; }
+/* ---- 記録 ---- */
+.alert { border-radius: 12px; padding: 12px 14px; margin: 10px 0; font-size: .92rem; border: 1px solid var(--border); background: var(--card); }
+.alert.warn { border-color: var(--speed); color: var(--speed); background: var(--speed-bg); }
+.alert.info { border-color: var(--pace); background: var(--pace-bg); }
+.alert button { margin-left: 6px; }
+.logs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.logs button.small, .reasons button.small { margin-left: 0; }
+.reasons { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; }
+.lv { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 6px; margin-right: 4px; }
+.lv-ok { color: var(--ok); background: var(--distance-bg); }
+.lv-mid { color: var(--race); background: var(--race-bg); }
+.lv-ng { color: var(--speed); background: var(--speed-bg); }
+.lv-rest { color: var(--rest); background: var(--rest-bg); }
+.today-result { margin-bottom: 8px; }
+.past-day .row1 { display: flex; align-items: center; gap: 8px; }
+.past-day .row2 { margin: 4px 0 0 56px; font-size: 13px; }
+.past-day .row2 small { color: var(--muted); }
+.past-day .logs { margin-left: 56px; }
+.settings { display: flex; flex-direction: column; gap: 8px; }
+.settings input { width: 72px; display: inline-block; margin: 0 4px; padding: 6px; }
+.settings button { align-self: flex-start; margin-left: 0; }
+.reasons[hidden] { display: none; }
