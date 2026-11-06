@@ -1,6 +1,8 @@
 name = "sub4-coach"
 main = "src/index.ts"
 compatibility_date = "2026-10-01"
+# 管理画面で登録した変数を、GitHub からの再デプロイで消さない
+keep_vars = true
 
 # 画面（HTML/JS/CSS）は public/ から配信。API・OAuth だけ Worker を通す。
 [assets]
