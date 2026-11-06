@@ -190,3 +190,6 @@ ul.stretches { list-style: none; padding: 0; margin: 0; }
 .stretch { border-top: 1px solid var(--border); padding: 8px 0; }
 .stretch ol { margin: 6px 0; padding-left: 22px; }
 .stretch .ask-btn { margin-left: 0; }
+/* ---- 文字の選択・長押しメニューを無効に（入力欄は除く） ---- */
+body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+input, textarea, select { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
