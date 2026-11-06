@@ -11,6 +11,11 @@ async function route(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
   const p = url.pathname;
 
+  // 設定確認用（値は返さず、登録されているかどうかだけ）
+  if (p === "/api/health") {
+    return json({ ok: true, app_password_set: !!env.APP_PASSWORD, db_bound: !!env.DB, coros_mcp_url: env.COROS_MCP_URL });
+  }
+
   if (p === "/api/login" && req.method === "POST") return login(req, env);
   if (p === "/api/logout" && req.method === "POST") return logout();
 
