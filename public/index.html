@@ -11,141 +11,120 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <header>
-    <h1>Sub4 Coach</h1>
-    <p class="sub">静岡マラソン 2027/3/14 まで <strong id="countdown">–</strong> 日 <span id="phase" class="phase"></span></p>
-  </header>
-
-  <main>
-    <!-- ログイン -->
-    <section id="login" class="card" hidden>
+  <!-- ログイン -->
+  <section id="login" class="login" hidden>
+    <div class="card">
       <h2>ログイン</h2>
       <form id="login-form">
         <input type="password" name="password" placeholder="パスワード" autocomplete="current-password" required>
         <button type="submit">ログイン</button>
       </form>
       <p class="msg" id="login-msg"></p>
+    </div>
+  </section>
+
+  <!-- アプリ本体：スクロールしない1画面（上：状態の1行／中：コーチ／下：タブの中身／最下段：タブ） -->
+  <div id="app" class="shell" hidden>
+    <header class="topbar">
+      <div class="tb-main">静岡まで <b id="countdown">–</b>日<span id="phase" class="phase"></span></div>
+      <span id="cond" class="cond"></span>
+      <button class="sync-chip" id="sync" aria-label="COROSと同期"><i id="sync-dot" class="dot"></i><span id="sync-label">同期</span></button>
+    </header>
+
+    <section class="coach">
+      <canvas id="coach-canvas" aria-label="コーチ"></canvas>
+      <div class="bubble" id="coach-bubble" role="button" tabindex="0">
+        <span id="coach-text">コーチを呼んでいます…</span><span class="more" id="coach-more" hidden>▼</span>
+      </div>
     </section>
 
-    <div id="app" hidden>
-      <!-- 同期・体調 -->
-      <section class="strip">
-        <span id="sync-state" class="pill"></span>
-        <span id="cond-recovery" class="pill" hidden></span>
-        <span id="cond-load" class="pill" hidden></span>
-        <button class="small ghost" id="sync">同期</button>
+    <main class="panels">
+      <section class="panel" id="tab-today">
+        <div id="alerts"></div>
+        <div id="today"></div>
+        <p class="msg" id="sync-msg"></p>
       </section>
-      <p class="msg" id="sync-msg"></p>
 
-      <!-- コーチ -->
-      <section class="coach">
-        <canvas id="coach-canvas" aria-label="コーチ"></canvas>
-        <div class="bubble" id="coach-bubble" role="button" tabindex="0">
-          <span id="coach-text">コーチを呼んでいます…</span><span class="more" id="coach-more" hidden>▼</span>
+      <section class="panel" id="tab-plan" hidden>
+        <div class="panel-head"><span>2週間の練習</span><span class="muted" id="week-sum"></span></div>
+        <ul id="days" class="rows"></ul>
+      </section>
+
+      <section class="panel" id="tab-care" hidden>
+        <div class="seg" data-group="care"><button data-seg="care-list" class="on">ケア</button><button data-seg="nutrition">栄養</button></div>
+        <div id="care-list"></div>
+        <div id="nutrition" hidden></div>
+      </section>
+
+      <section class="panel" id="tab-log" hidden>
+        <div class="seg" data-group="log"><button data-seg="past-box" class="on">最近の記録</button><button data-seg="volume">走行距離</button></div>
+        <div id="past-box"><ul id="past" class="rows"></ul></div>
+        <div id="volume" hidden></div>
+      </section>
+
+      <section class="panel scroll" id="tab-settings" hidden>
+        <h3>COROS 接続</h3>
+        <p id="coros-state">確認中…</p>
+        <div class="row">
+          <a class="btn small" id="connect" href="/oauth/start">COROSと接続</a>
+          <button class="ghost small" id="disconnect" hidden>接続を解除</button>
         </div>
-      </section>
+        <p class="msg" id="coros-msg"></p>
 
-      <div id="alerts"></div>
+        <h3>体重</h3>
+        <form id="body-form" class="settings">
+          <label>体重 <input type="number" id="set-weight" min="30" max="150" step="0.1"> kg <button type="submit" class="small">保存</button></label>
+          <p class="hint" id="weight-hint"></p>
+          <span class="msg" id="body-msg"></span>
+        </form>
 
-      <!-- 今日 -->
-      <section id="today" class="card today"></section>
+        <h3>達成の判定</h3>
+        <form id="settings-form" class="settings">
+          <label>距離 <input type="number" id="set-dist" min="50" max="100" step="1"> % 以上</label>
+          <label>ペース 目安 ± <input type="number" id="set-pace" min="0" max="60" step="1"> 秒/km 以内</label>
+          <button type="submit" class="small">保存</button>
+          <span class="msg" id="settings-msg"></span>
+        </form>
 
-      <!-- ケア -->
-      <section class="card">
-        <details id="care-box" open>
-          <summary><h2 class="inline">今日のケア</h2></summary>
-          <div id="care"></div>
-        </details>
-      </section>
-
-      <!-- 栄養 -->
-      <section class="card">
-        <details id="nutrition-box">
-          <summary><h2 class="inline">今日の栄養</h2> <span class="muted" id="nutrition-sum"></span></summary>
-          <div id="nutrition"></div>
-        </details>
-      </section>
-
-      <!-- 2週間 -->
-      <section class="card">
-        <h2>2週間の練習</h2>
-        <ul id="days" class="days"></ul>
-        <p class="legend">
-          <span class="cat cat-speed">⚡ スピード</span>
-          <span class="cat cat-pace">🎯 ペース</span>
-          <span class="cat cat-distance">🛣️ 距離</span>
-          <span class="cat cat-jog">🌿 ジョグ</span>
-        </p>
-      </section>
-
-      <!-- 走行距離 -->
-      <section class="card">
-        <h2>走行距離の見込み</h2>
-        <div id="volume"></div>
-      </section>
-
-      <!-- 最近の記録 -->
-      <section class="card">
-        <h2>最近の記録</h2>
-        <p class="hint">COROS の活動は自動で反映されます。走らなかった日や、同期できなかった日だけ記録してください。</p>
-        <ul id="past" class="days"></ul>
-      </section>
-
-      <!-- 走力 -->
-      <section class="card">
         <details>
-          <summary><h2 class="inline">走力とペースの基準</h2></summary>
+          <summary><h3 class="inline">走力とペースの基準</h3></summary>
           <div id="ability"></div>
         </details>
-      </section>
 
-      <!-- 設定 -->
-      <section class="card">
-        <details id="settings">
-          <summary><h2 class="inline">設定・COROS接続</h2></summary>
-
-          <h3>達成の判定</h3>
-          <form id="settings-form" class="settings">
-            <label>距離 <input type="number" id="set-dist" min="50" max="100" step="1"> % 以上</label>
-            <label>ペース 目安の範囲 ± <input type="number" id="set-pace" min="0" max="60" step="1"> 秒/km 以内</label>
-            <button type="submit" class="small">保存</button>
-            <span class="msg" id="settings-msg"></span>
-          </form>
-
-          <h3>体重</h3>
-          <form id="body-form" class="settings">
-            <label>体重 <input type="number" id="set-weight" min="30" max="150" step="0.1"> kg</label>
-            <p class="hint" id="weight-hint"></p>
-            <button type="submit" class="small">保存</button>
-            <span class="msg" id="body-msg"></span>
-          </form>
-
-          <h3>COROS 接続</h3>
-          <p id="coros-state">確認中…</p>
+        <details>
+          <summary><h3 class="inline">データ取得テスト</h3></summary>
+          <p class="hint">COROSから実際に取れるデータを確認します（読み取りのみ）。</p>
           <div class="row">
-            <a class="btn" id="connect" href="/oauth/start">COROSと接続</a>
-            <button class="ghost" id="disconnect" hidden>接続を解除</button>
+            <button class="small" id="run-probe">取得テストを実行</button>
+            <button class="ghost small" id="download" hidden>結果をJSONで保存</button>
           </div>
-          <p class="msg" id="coros-msg"></p>
+          <p class="msg" id="probe-msg"></p>
+          <div id="probe-result"></div>
           <details id="as-details" hidden>
             <summary>認可サーバーの発見ログ</summary>
             <pre id="as-log"></pre>
           </details>
-
-          <h3>データ取得テスト</h3>
-          <p class="hint">COROSから実際に取れるデータを確認します（読み取りのみ）。</p>
-          <div class="row">
-            <button id="run-probe">取得テストを実行</button>
-            <button class="ghost" id="download" hidden>結果をJSONで保存</button>
-          </div>
-          <p class="msg" id="probe-msg"></p>
-          <div id="probe-result"></div>
-
-          <p class="footer"><button class="link" id="logout">ログアウト</button></p>
         </details>
+
+        <p class="footer"><button class="link" id="logout">ログアウト</button></p>
       </section>
-    </div>
-  </main>
+    </main>
+
+    <nav class="tabbar">
+      <button data-tab="today" class="on"><span>🏃</span>今日</button>
+      <button data-tab="plan"><span>📅</span>2週間</button>
+      <button data-tab="care"><span>🧘</span>ケア</button>
+      <button data-tab="log"><span>📈</span>記録</button>
+      <button data-tab="settings"><span>⚙️</span>設定</button>
+    </nav>
+
+    <!-- 詳細を下から出すシート -->
+    <div class="sheet-bg" id="sheet-bg" hidden></div>
+    <section class="sheet" id="sheet" hidden aria-modal="true" role="dialog">
+      <button class="sheet-close" id="sheet-close" aria-label="閉じる">✕</button>
+      <div id="sheet-body"></div>
+    </section>
+  </div>
 
   <script src="/app.js" type="module"></script>
 </body>
