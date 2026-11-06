@@ -238,6 +238,34 @@ function renderPast(plan) {
     : `<li class="muted">まだ記録がありません</li>`;
 }
 
+function renderVolume(plan) {
+  const v = plan.volume;
+  if (!v) return;
+  const w = v.week;
+  const wTotal = Math.round((w.done + w.planned) * 10) / 10;
+  const scale = Math.max(220, ...v.months.map((m) => m.actual + m.planned + m.optional)) ;
+  const pct = (km) => `${(km / scale) * 100}%`;
+  const rows = v.months
+    .map((m) => {
+      const total = Math.round(m.actual + m.planned);
+      const label = `${Number(m.month.slice(5))}月`;
+      return `<div class="vrow">
+        <span class="vm">${label}</span>
+        <div class="vtrack">
+          <i class="band" style="left:${pct(v.target.min)};width:${pct(v.target.max - v.target.min)}"></i>
+          <i class="va" style="width:${pct(m.actual)}"></i><i class="vp" style="width:${pct(m.planned)}"></i><i class="vo" style="width:${pct(m.optional)}"></i>
+        </div>
+        <span class="vt">${total}km${m.optional ? `<small>+${Math.round(m.optional)}</small>` : ""}</span>
+      </div>`;
+    })
+    .join("");
+  $("volume").innerHTML = `
+    <p>今週：走った ${w.done}km ＋ 予定 ${w.planned}km ＝ <strong>${wTotal}km</strong>${w.optional ? `（任意ジョグ込みで ${Math.round((wTotal + w.optional) * 10) / 10}km）` : ""}</p>
+    <div class="vchart">${rows}</div>
+    <p class="vlegend"><span><i class="va"></i>走った</span><span><i class="vp"></i>予定</span><span><i class="vo"></i>任意ジョグ</span><span><i class="band"></i>サブ4の目安 ${v.target.min}〜${v.target.max}km/月</span></p>
+    <p class="hint">11月・3月は大会（42km）を含みます。3月は大会日までの分です。</p>`;
+}
+
 function renderSettings(plan) {
   const s = plan.settings;
   $("set-dist").value = s.distPct;
@@ -294,6 +322,7 @@ async function loadPlan(connected) {
   renderToday(plan);
   renderDays(plan);
   renderPast(plan);
+  renderVolume(plan);
   renderAbility(plan);
   renderSettings(plan);
   // まだ一度も同期していなければ自動で同期する

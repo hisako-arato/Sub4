@@ -12,6 +12,7 @@ import { clearPain, loadLogs, loadPainClearedAt, loadSettings, saveSettings, set
 import { addDays, daysBetween, RACE_DATE, todayJst, weekSpecFor, PHASE_JA } from "./plan/calendar.ts";
 import { fmtPace, fmtTime, predictTime } from "./plan/vdot.ts";
 import { loadPushed, pushWorkout } from "./coros/workout.ts";
+import { computeVolume } from "./plan/volume.ts";
 
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 
@@ -126,11 +127,12 @@ async function computePlan(env: Env) {
   const { days, past, alerts } = generateWithHistory(ability, activities, {
     today, loadRatio, recoveryPercent: snapshot?.recovery?.percent ?? null, logs, settings, painClearedAt, planStart,
   });
-  return { today, snapshot, ability, loadRatio, days, past, alerts, settings };
+  return { today, snapshot, ability, loadRatio, days, past, alerts, settings, activities };
 }
 
 async function buildPlanResponse(env: Env) {
-  const [{ today, snapshot, ability, loadRatio, days, past, alerts, settings }, pushed] = await Promise.all([computePlan(env), loadPushed(env)]);
+  const [{ today, snapshot, ability, loadRatio, days, past, alerts, settings, activities }, pushed] = await Promise.all([computePlan(env), loadPushed(env)]);
+  const volume = computeVolume(ability, activities, days, today);
   const spec = weekSpecFor(today);
   const syncedAt = snapshot?.syncedAt ?? null;
   const p = ability.paces;
@@ -173,6 +175,7 @@ async function buildPlanResponse(env: Env) {
     },
     days: days.map((d) => ({ ...d, pushed: pushed[d.date] ? { title: pushed[d.date].title, at: pushed[d.date].at } : null })),
     past: past.filter((d) => d.date >= addDays(today, -7)),
+    volume,
     alerts,
     settings,
   };

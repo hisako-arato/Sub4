@@ -159,3 +159,18 @@ table.paces td { font-variant-numeric: tabular-nums; }
 .settings input { width: 72px; display: inline-block; margin: 0 4px; padding: 6px; }
 .settings button { align-self: flex-start; margin-left: 0; }
 .reasons[hidden] { display: none; }
+/* ---- 走行距離 ---- */
+.vchart { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+.vrow { display: flex; align-items: center; gap: 8px; }
+.vm { width: 32px; flex: none; font-size: 13px; color: var(--muted); }
+.vt { width: 84px; flex: none; text-align: right; font-variant-numeric: tabular-nums; font-size: 14px; }
+.vt small { color: var(--muted); margin-left: 2px; }
+.vtrack { position: relative; flex: 1; height: 16px; display: flex; background: var(--bg); border-radius: 4px; overflow: hidden; }
+.vtrack i { display: block; height: 100%; position: relative; z-index: 1; }
+.vtrack .band { position: absolute; top: 0; height: 100%; z-index: 0; }
+i.band { background: color-mix(in srgb, var(--ok) 18%, transparent); border-left: 1px dashed var(--ok); border-right: 1px dashed var(--ok); }
+i.va { background: var(--accent); }
+i.vp { background: color-mix(in srgb, var(--accent) 45%, transparent); }
+i.vo { background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--accent) 35%, transparent) 0 3px, transparent 3px 6px); }
+.vlegend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--muted); }
+.vlegend i { display: inline-block; width: 12px; height: 10px; margin-right: 4px; vertical-align: -1px; border-radius: 2px; }
