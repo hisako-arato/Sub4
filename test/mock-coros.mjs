@@ -21,7 +21,16 @@ const TOOLS = [
 
 function toolResult(name, args) {
   if (name === "querySportRecords") {
-    return { records: [{ labelId: "L-RACE", sportType: 100, date: "20261103", distance: 42195, duration: 15120 }], args };
+    // 本物の COROS と同じ文章形式（2026/11 の取得テストで確認）
+    return [
+      "Sport Records — 2026-11-01 to 2026-11-05 (1 records)",
+      "========================",
+      "",
+      "1. Outdoor Run — 2026-11-03",
+      "   Duration: 4:24:44 | Distance: 42.20 km",
+      "   Average Pace: 6:16 /km | Avg HR: 152 bpm | Calories: 3118 kcal",
+      "   LabelId: 481490330831585282 | SportType: 100",
+    ].join("\n");
   }
   if (name === "queryRecoveryStatus") throw new Error("not supported on this device");
   return { ok: true, tool: name, args };
@@ -112,7 +121,8 @@ const server = http.createServer(async (req, res) => {
       result = { tools: TOOLS };
     } else if (msg.method === "tools/call") {
       try {
-        result = { content: [{ type: "text", text: JSON.stringify(toolResult(msg.params.name, msg.params.arguments)) }] };
+        const out = toolResult(msg.params.name, msg.params.arguments);
+        result = { content: [{ type: "text", text: typeof out === "string" ? out : JSON.stringify(out) }] };
       } catch (e) {
         result = { content: [{ type: "text", text: String(e.message) }], isError: true };
       }

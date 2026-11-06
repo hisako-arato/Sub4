@@ -94,7 +94,7 @@ assert.equal(res.status, 200, JSON.stringify(probe));
 const byTool = Object.fromEntries(probe.calls.map((c) => [c.tool, c]));
 assert.equal(byTool.queryUserInfo.ok, true);
 assert.equal(byTool.getActivityDetail.ok, true, "race activity should be detected via labelId/sportType");
-assert.deepEqual(byTool.getActivityDetail.args, { labelId: "L-RACE", sportType: 100 });
+assert.deepEqual(byTool.getActivityDetail.args, { labelId: "481490330831585282", sportType: 100 });
 assert.equal(byTool.queryRecoveryStatus.ok, false, "isError results are reported as failures");
 assert.deepEqual(probe.write_tools_available.sort(), ["createScheduledWorkout", "createTrainingPlan"]);
 assert.ok(!probe.calls.some((c) => c.tool.startsWith("create")), "write tools must never be called");

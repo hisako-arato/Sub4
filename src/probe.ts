@@ -17,15 +17,22 @@ export function jstDate(offsetDays = 0, base = Date.now()): string {
   return d.toISOString().slice(0, 10).replace(/-/g, "");
 }
 
-/** 結果のどこかにある {labelId, sportType} を探す（フィールド名はテストで確定させる） */
-export function findActivityRef(data: unknown): { labelId: unknown; sportType: unknown } | null {
+/**
+ * 活動一覧の結果から最初の {labelId, sportType} を取り出す。
+ * COROS は人が読む文章形式で返す（例: "LabelId: 481490330831585282 | SportType: 100"）。
+ * labelId は JS の安全な整数範囲を超えるので文字列のまま扱う。JSON で返る場合にも対応する。
+ */
+export function findActivityRef(data: unknown): { labelId: string; sportType: number } | null {
   const stack: unknown[] = [data];
   while (stack.length) {
     const v = stack.pop();
-    if (Array.isArray(v)) stack.push(...v);
+    if (typeof v === "string") {
+      const m = v.match(/LabelId:\s*(\d+)\s*\|\s*SportType:\s*(\d+)/i);
+      if (m) return { labelId: m[1], sportType: Number(m[2]) };
+    } else if (Array.isArray(v)) stack.push(...v);
     else if (v && typeof v === "object") {
       const o = v as Record<string, unknown>;
-      if (o.labelId !== undefined && o.sportType !== undefined) return { labelId: o.labelId, sportType: o.sportType };
+      if (o.labelId !== undefined && o.sportType !== undefined) return { labelId: String(o.labelId), sportType: Number(o.sportType) };
       stack.push(...Object.values(o));
     }
   }
@@ -90,8 +97,8 @@ export async function runProbe(env: Env) {
   const race = await call("querySportRecords", { startDate: "20261101", endDate: "20261105", minDistanceKm: 40, limit: 5 });
   const ref = findActivityRef(race);
   if (ref) {
-    await call("getActivityDetail", ref as Record<string, unknown>);
-    await call("queryActivityLapData", ref as Record<string, unknown>);
+    await call("getActivityDetail", ref);
+    await call("queryActivityLapData", ref);
   } else {
     calls.push({ tool: "getActivityDetail", args: {}, ok: false, ms: 0, error: "大会の活動（labelId/sportType）が見つからず未実行" });
   }
