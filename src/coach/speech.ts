@@ -3,6 +3,7 @@
 // 作品中のセリフはそのまま使わない。安全に関わる内容（痛み・受診）ははっきり伝える。
 import type { DayPlan, Session } from "../plan/generate.ts";
 import type { Phase } from "../plan/calendar.ts";
+import type { Stretch } from "../care/care.ts";
 
 export type Expression = "neutral" | "happy" | "angry" | "sad" | "relaxed" | "surprised";
 
@@ -17,6 +18,7 @@ export interface CoachContext {
   hourJst: number;
   week: { done: number; planned: number };
   upcomingTuneup: { name: string; inDays: number } | null;
+  care?: { title: string; before: Stretch[]; after: Stretch[] } | null;
   name?: string;
 }
 
@@ -155,6 +157,19 @@ export function coachSpeech(ctx: CoachContext): Speech {
   // 計画を調整した理由（コーチのひと言）
   if (d?.notes.length) lines.push(d.notes[0]);
 
+  // おすすめのストレッチ（動作の見本はまだないので、言葉で伝える）
+  const c = ctx.care;
+  if (c && c.after.length) {
+    const names = c.after.map((x) => x.name).join("・");
+    const hold = Math.max(...c.after.map((x) => x.holdSec));
+    const pre = c.before.length ? `走る前は${c.before.map((x) => x.name).join("・")}で体を温めて、` : "";
+    lines.push(
+      chosen
+        ? `${pre}走ったあとは${names}を${hold}秒ずつ伸ばしなさい。やり方は下の「今日のケア」から聞いてね`
+        : `休みの日は${names}で体をゆるめるのがおすすめよ。やり方は下の「今日のケア」から聞いてね`,
+    );
+  }
+
   // 最後にもうひと言
   if (ctx.daysToRace <= 7 && ctx.daysToRace > 0) {
     lines.push(`静岡マラソンまであと${ctx.daysToRace}日！ ここまで来たら、あとは疲れを抜くだけよ`);
@@ -169,5 +184,19 @@ export function coachSpeech(ctx: CoachContext): Speech {
       ]),
     );
   }
-  return { expression, lines: lines.slice(0, 5) };
+  return { expression, lines: lines.slice(0, 6) };
+}
+
+/** ストレッチのやり方を、コーチが順番に説明するセリフ */
+export function stretchSpeech(st: Stretch, name = "ハルキ君"): Speech {
+  const order = ["まず、", "次に、", "それから、", "最後に、"];
+  const steps = st.steps.map((x, i) => `${i === st.steps.length - 1 && i > 0 ? "最後に、" : order[Math.min(i, 2)]}${x}`);
+  const finish =
+    st.kind === "dynamic"
+      ? "反動は大きくしすぎないで、リズムよくね。走る前に体を温めるためのものよ"
+      : `そのまま${st.holdSec}秒キープ${st.sides ? "、反対側も同じように" : ""}。反動はつけないで、気持ちいいところで止めるのよ。痛いまで伸ばしたら承知しないんだから`;
+  return {
+    expression: "happy",
+    lines: [`${st.name}ね、${name}。${st.target}に効くわよ`, ...steps, finish],
+  };
 }

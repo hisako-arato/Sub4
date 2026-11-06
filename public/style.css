@@ -189,4 +189,4 @@ i.vo { background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--acc
 ul.stretches { list-style: none; padding: 0; margin: 0; }
 .stretch { border-top: 1px solid var(--border); padding: 8px 0; }
 .stretch ol { margin: 6px 0; padding-left: 22px; }
-.stretch .demo-btn { margin-left: 0; }
+.stretch .ask-btn { margin-left: 0; }

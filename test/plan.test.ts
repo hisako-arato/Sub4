@@ -333,7 +333,7 @@ test("平日（祝日以外）の練習は 12km 以下", () => {
 });
 
 // ---- 段階4：コーチのセリフ ----
-import { coachSpeech, type CoachContext } from "../src/coach/speech.ts";
+import { coachSpeech, stretchSpeech, type CoachContext } from "../src/coach/speech.ts";
 
 const ctxBase = (today: CoachContext["today"]): CoachContext => ({
   today, daysToRace: 60, phase: "build", phaseLabel: "強化期", connected: true, stale: false,
@@ -397,4 +397,17 @@ test("ケア：痛みのときはストレッチを出さず受診を促す、�
     const c = careFor(day.main, { pain: false });
     for (const id of [...c.before, ...c.after]) assert.ok(STRETCHES[id], id);
   }
+});
+
+test("ケアのセリフ：今日のおすすめストレッチを伝え、種目ごとにやり方を説明する", () => {
+  const jogDay = season(1.0).find((d) => d.main?.category === "jog" && !d.optional)!;
+  const c = careFor(jogDay.main, { pain: false });
+  const care = { title: c.title, before: c.before.map((id) => STRETCHES[id]), after: c.after.map((id) => STRETCHES[id]) };
+  const sp = coachSpeech({ ...ctxBase(jogDay), care });
+  assert.ok(sp.lines.some((l) => l.includes("ふくらはぎ") && l.includes("30秒")), sp.lines.join("\n"));
+  const calf = stretchSpeech(STRETCHES.calf);
+  assert.match(calf.lines[0], /ふくらはぎ/);
+  assert.equal(calf.lines.length, STRETCHES.calf.steps.length + 2);
+  assert.match(calf.lines.at(-1)!, /30秒キープ、反対側も/);
+  assert.match(stretchSpeech(STRETCHES.legswing).lines.at(-1)!, /リズム/);
 });

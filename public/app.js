@@ -272,7 +272,7 @@ function stretchItem(st) {
   return `<li class="stretch"><details>
     <summary><strong>${esc(st.name)}</strong> <span class="muted">${esc(st.target)}・${hold}</span></summary>
     <ol>${st.steps.map((x) => `<li>${esc(x)}</li>`).join("")}</ol>
-    <button class="small ghost demo-btn" data-id="${st.id}" data-name="${esc(st.name)}" hidden>見本を見せて</button>
+    <button class="small ghost ask-btn" data-id="${st.id}">🗣 コーチに教わる</button>
   </details></li>`;
 }
 
@@ -285,7 +285,6 @@ function renderCare(plan) {
   if (c.after.length) html += `<h3>${plan.days[0]?.main ? "走ったあと" : "今日のストレッチ"}</h3><ul class="stretches">${c.after.map(stretchItem).join("")}</ul>`;
   html += `<h3>セルフケア</h3><ul class="menu">${c.selfCare.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`;
   $("care").innerHTML = html;
-  coachDemoReady && document.querySelectorAll(".demo-btn").forEach((b) => (b.hidden = false));
 }
 
 function renderNutrition(plan) {
@@ -392,7 +391,6 @@ try {
   console.warn("coach unavailable", e);
 }
 let lastPlan = null;
-let coachDemoReady = false; // アバターがストレッチの見本を見せられるか
 
 async function doSync() {
   $("sync").disabled = true;
@@ -431,6 +429,16 @@ document.addEventListener("click", async (e) => {
       if (m) m.textContent = `${body.updated ? "時計の予定を書き換えました" : "時計の予定に登録しました"}。COROS アプリで同期すると時計に入ります。${body.message ? `（${body.message}）` : ""}`;
     } else {
       msg.textContent = `送れませんでした：${body?.message || status}`;
+    }
+    return;
+  }
+  // ストレッチのやり方をコーチが説明する（動作の見本は第一段階では作らない）
+  const ask = e.target.closest(".ask-btn");
+  if (ask) {
+    const st = [...(lastPlan?.care?.before ?? []), ...(lastPlan?.care?.after ?? [])].find((x) => x.id === ask.dataset.id);
+    if (st && coach) {
+      coach.say(st.speech, { restart: true });
+      document.querySelector(".coach").scrollIntoView({ behavior: "smooth", block: "start" });
     }
     return;
   }

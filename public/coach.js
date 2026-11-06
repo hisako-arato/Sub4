@@ -155,10 +155,10 @@ export function createCoach({ canvas, bubble, text, more, url = "/vrm/coach.vrm"
   bubble.addEventListener("click", next);
 
   return {
-    say(speech) {
+    say(speech, { restart = false } = {}) {
       const same = speech && JSON.stringify(speech.lines) === JSON.stringify(lines);
       mood = speech?.expression ?? "neutral";
-      if (same) return; // 同じセリフなら言い直さない
+      if (same && !restart) return; // 計画の読み直しで同じセリフなら言い直さない
       lines = speech?.lines ?? [];
       idx = 0;
       if (lines.length) show();

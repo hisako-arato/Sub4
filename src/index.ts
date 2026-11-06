@@ -13,7 +13,7 @@ import { addDays, daysBetween, RACE_DATE, todayJst, weekSpecFor, PHASE_JA } from
 import { fmtPace, fmtTime, predictTime } from "./plan/vdot.ts";
 import { loadPushed, pushWorkout } from "./coros/workout.ts";
 import { computeVolume } from "./plan/volume.ts";
-import { coachSpeech } from "./coach/speech.ts";
+import { coachSpeech, stretchSpeech } from "./coach/speech.ts";
 import { careFor, STRETCHES } from "./care/care.ts";
 import { nutritionFor } from "./care/nutrition.ts";
 
@@ -163,6 +163,7 @@ async function buildPlanResponse(env: Env) {
     hourJst: new Date(Date.now() + 9 * 3600_000).getUTCHours(),
     week: { done: volume.week.done, planned: volume.week.planned },
     upcomingTuneup: tuneup ? { name: tuneup.main!.title.replace(/（.*$/, ""), inDays: daysBetween(today, tuneup.date) } : null,
+    care: modes.pain ? null : { title: carePlan.title, before: carePlan.before.map((id) => STRETCHES[id]), after: carePlan.after.map((id) => STRETCHES[id]) },
   });
   const spec = weekSpecFor(today);
   const syncedAt = snapshot?.syncedAt ?? null;
@@ -210,8 +211,8 @@ async function buildPlanResponse(env: Env) {
     coach,
     care: {
       ...carePlan,
-      before: carePlan.before.map((id) => STRETCHES[id]),
-      after: carePlan.after.map((id) => STRETCHES[id]),
+      before: carePlan.before.map((id) => ({ ...STRETCHES[id], speech: stretchSpeech(STRETCHES[id]) })),
+      after: carePlan.after.map((id) => ({ ...STRETCHES[id], speech: stretchSpeech(STRETCHES[id]) })),
     },
     nutrition,
     body: { weightKg: body.weightKg, corosWeightKg: corosWeight },
