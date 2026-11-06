@@ -1,3 +1,4 @@
+import { createCoach } from "./coach.js";
 const $ = (id) => document.getElementById(id);
 const RACE_DAY = new Date("2027-03-14T00:00:00+09:00");
 
@@ -318,6 +319,7 @@ async function loadPlan(connected) {
     $("cond-load").className = `pill ${r > 1.5 ? "warn" : ""}`;
     $("cond-load").textContent = `負荷比 ${r.toFixed(2)}`;
   }
+  coach?.say(plan.coach);
   renderAlerts(plan);
   renderToday(plan);
   renderDays(plan);
@@ -332,6 +334,12 @@ async function loadPlan(connected) {
   }
 }
 let autoSynced = false;
+let coach = null;
+try {
+  coach = createCoach({ canvas: $("coach-canvas"), bubble: $("coach-bubble"), text: $("coach-text"), more: $("coach-more") });
+} catch (e) {
+  console.warn("coach unavailable", e);
+}
 let lastPlan = null;
 
 async function doSync() {

@@ -178,8 +178,8 @@ export function adjustPlan(base: DayPlan[], a: Ability, activities: Activity[], 
     for (const d of future) {
       if (!d.main) continue;
       const within2 = daysBetween(lastPain!, d.date) <= 2;
-      if (within2) set(d, null, "痛みがあるので今日は休養。無理をしないで");
-      else set(d, easy(a, d.main, 5, "様子見ジョグ"), "痛みが出たら中止してね。強度は上げないよ");
+      if (within2) set(d, null, "痛いのに走るなんて許さないわよ。今日はしっかり休みなさい");
+      else set(d, easy(a, d.main, 5, "様子見ジョグ"), "様子見のジョグよ。少しでも痛んだらすぐやめること。いいわね？");
     }
   } else {
     // 5. 組み直し（週に1回まで。大事な順：距離 → ペース → スピード）
@@ -201,11 +201,13 @@ export function adjustPlan(base: DayPlan[], a: Ability, activities: Activity[], 
           (!moved.hard || (!hardAt(addDays(d.date, -1)) && !hardAt(addDays(d.date, 1)))),
       );
       if (slot) {
-        set(slot, moved, `${mmdd(m.day.date)}の「${src.title}」を${m.factor < 1 ? "少し短くして" : ""}この日に移したよ`);
+        set(slot, moved, m.factor < 1
+            ? `${mmdd(m.day.date)}の「${src.title}」、少し短くしてここに移しといたわ。取り返すのは一部だけ、欲張っちゃダメよ`
+            : `${mmdd(m.day.date)}の「${src.title}」はここに移しといたわ。予定があるなら仕方ないものね`);
         slot.optional = false;
       } else {
         const t = future[0];
-        if (t) t.notes.push(`${mmdd(m.day.date)}の「${src.title}」は、詰め込まずに次の練習へ進むよ`);
+        if (t) t.notes.push(`${mmdd(m.day.date)}の「${src.title}」は今回は見送りよ。詰め込んで故障なんて、あたしが許さないんだから`);
       }
     }
 
@@ -213,15 +215,15 @@ export function adjustPlan(base: DayPlan[], a: Ability, activities: Activity[], 
     if (fatigue) {
       for (const d of future.filter((x) => daysBetween(today, x.date) < 7)) {
         if (!d.main?.hard || d.main.category === "race") continue;
-        if (d.main.category === "distance") set(d, scaleSession(d.main, 0.8), "疲労の記録があるので、距離を8割にしたよ");
-        else set(d, easy(a, d.main, 8), "疲労の記録があるので、今日はジョグにしたよ");
+        if (d.main.category === "distance") set(d, scaleSession(d.main, 0.8), "疲れてるんでしょ？ 今日は8割で十分よ");
+        else set(d, easy(a, d.main, 8), "疲れてるなら今日はジョグにしなさい。無理は禁止！");
       }
     }
 
     // 7. 数日空いた後：次の2回は強度を上げない
     if (comeback) {
       for (const d of future.filter((x) => x.main && !x.optional).slice(0, 2)) {
-        if (d.main!.hard && d.main!.category !== "race") set(d, easy(a, d.main!, 10), "数日空いたので、強度を上げずに軽めから戻そう");
+        if (d.main!.hard && d.main!.category !== "race") set(d, easy(a, d.main!, 10), "久しぶりなんだから、いきなり飛ばすのは禁止よ。軽めから戻すの");
       }
     }
 
@@ -235,7 +237,7 @@ export function adjustPlan(base: DayPlan[], a: Ability, activities: Activity[], 
       const recent = Math.max(0, ...actual, ...planned);
       const cap = Math.max(12, recent + 6);
       if (d.main.distanceKm > cap + 0.5) {
-        set(d, scaleSession(d.main, cap / d.main.distanceKm), `最近の最長距離（${recent}km）に合わせて、少し短くしたよ`);
+        set(d, scaleSession(d.main, cap / d.main.distanceKm), `最近の最長は${recent}kmでしょ？ いきなり伸ばしすぎないよう、ちょっと短くしといたわ`);
       }
     }
 
@@ -263,18 +265,18 @@ export function adjustPlan(base: DayPlan[], a: Ability, activities: Activity[], 
         .sort((x, y) => y.main!.distanceKm - x.main!.distanceKm)[0];
       if (!key) continue;
       const f = Math.max(0.7, (key.main!.distanceKm - (total - cap)) / key.main!.distanceKm);
-      if (f < 0.97) set(key, scaleSession(key.main!, f), `週の距離が急に増えないよう、少し短くしたよ（上限の目安 ${Math.round(cap)}km）`);
+      if (f < 0.97) set(key, scaleSession(key.main!, f), `今週は距離が増えすぎね。${Math.round(cap)}kmくらいに収まるよう、少し削っといたわ`);
     }
 
     // 10. 負荷比・回復状況
     if (opts.loadRatio != null && opts.loadRatio > DOWNGRADE_LOAD_LIMIT) {
       for (const d of future.filter((x) => daysBetween(today, x.date) < 7)) {
-        if (d.main?.hard && d.main.category !== "race") set(d, easy(a, d.main, 8), `負荷比が ${opts.loadRatio.toFixed(2)} と高いので、軽めのジョグにしたよ`);
+        if (d.main?.hard && d.main.category !== "race") set(d, easy(a, d.main, 8), `負荷比${opts.loadRatio.toFixed(2)}って、張り切りすぎよ。今は軽めのジョグにしなさい`);
       }
     }
     const t = future[0];
     if (t?.date === today && t.main?.hard && t.main.category !== "race" && opts.recoveryPercent != null && opts.recoveryPercent < LOW_RECOVERY) {
-      set(t, easy(a, t.main, 8), `回復が ${opts.recoveryPercent}% なので、今日は軽めにしたよ`);
+      set(t, easy(a, t.main, 8), `回復${opts.recoveryPercent}%じゃまだまだね。今日は軽めにしときなさい`);
     }
   }
 
@@ -293,7 +295,7 @@ export function adjustPlan(base: DayPlan[], a: Ability, activities: Activity[], 
   // 12. 高強度を2日続けない
   for (const d of future) {
     if (d.main?.hard && d.main.category !== "race" && hardAt(addDays(d.date, -1))) {
-      set(d, easy(a, d.main, 6), "前日がきつい練習なので、今日は軽めにしたよ");
+      set(d, easy(a, d.main, 6), "昨日きつい練習したばっかりでしょ。今日は軽めよ");
     }
   }
 
@@ -302,16 +304,16 @@ export function adjustPlan(base: DayPlan[], a: Ability, activities: Activity[], 
   const lastQuality = [...pastRuns].reverse().find((d) => d.planned && (d.planned.category === "speed" || d.planned.category === "pace"));
   if (!pain && lastQuality?.result?.achievement?.level === "partial" && daysBetween(lastQuality.date, today) <= 10) {
     const next = future.find((d) => d.main && (d.main.category === "speed" || d.main.category === "pace") && d.main.hard);
-    if (next) set(next, scaleSession(next.main!, 0.85), `前回の「${lastQuality.planned!.title}」は少しきつそうだったので、今回は少し短めに`);
+    if (next) set(next, scaleSession(next.main!, 0.85), `この前の「${lastQuality.planned!.title}」はちょっとバテてたわね。今回は少し短めにしてあげる`);
   }
   const lastEasy = [...pastRuns].reverse().find((d) => d.planned && !d.planned.hard);
   if (lastEasy?.result?.achievement?.flags.includes("fast") && daysBetween(lastEasy.date, today) <= 7) {
     const next = future.find((d) => d.main && !d.main.hard);
-    if (next) next.notes.push(`前回のジョグは ${lastEasy.result.achievement.avgPace}/km と速めだったよ。楽なペースを守ると後半の練習が楽になる`);
+    if (next) next.notes.push(`この前のジョグ、${lastEasy.result.achievement.avgPace}/kmって速すぎ！ ジョグはのんびり走るものなの。分かった？`);
   }
   const lastKey = [...pastRuns].reverse().find((d) => isKey(d.planned));
   if (lastKey?.result?.achievement?.level === "achieved" && daysBetween(lastKey.date, today) <= 3 && future[0]) {
-    future[0].notes.unshift(`${mmdd(lastKey.date)}の「${lastKey.planned!.title}」、しっかりできたね！`);
+    future[0].notes.unshift(`${mmdd(lastKey.date)}の「${lastKey.planned!.title}」、ちゃんとやりきったじゃない！ やるわね`);
   }
 
   // 調整した日は気分の練習を作り直す（選択はリセット）

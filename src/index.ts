@@ -13,6 +13,7 @@ import { addDays, daysBetween, RACE_DATE, todayJst, weekSpecFor, PHASE_JA } from
 import { fmtPace, fmtTime, predictTime } from "./plan/vdot.ts";
 import { loadPushed, pushWorkout } from "./coros/workout.ts";
 import { computeVolume } from "./plan/volume.ts";
+import { coachSpeech } from "./coach/speech.ts";
 
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 
@@ -124,15 +125,33 @@ async function computePlan(env: Env) {
   ]);
   const ability = computeAbility(activities, snapshot?.fitness ?? null, today);
   const loadRatio = snapshot?.load?.[0]?.ratio ?? null;
-  const { days, past, alerts } = generateWithHistory(ability, activities, {
+  const { days, past, alerts, modes } = generateWithHistory(ability, activities, {
     today, loadRatio, recoveryPercent: snapshot?.recovery?.percent ?? null, logs, settings, painClearedAt, planStart,
   });
-  return { today, snapshot, ability, loadRatio, days, past, alerts, settings, activities };
+  return { today, snapshot, ability, loadRatio, days, past, alerts, modes, settings, activities };
 }
 
 async function buildPlanResponse(env: Env) {
-  const [{ today, snapshot, ability, loadRatio, days, past, alerts, settings, activities }, pushed] = await Promise.all([computePlan(env), loadPushed(env)]);
+  const [{ today, snapshot, ability, loadRatio, days, past, alerts, modes, settings, activities }, pushed, conn] = await Promise.all([
+    computePlan(env),
+    loadPushed(env),
+    connectionStatus(env),
+  ]);
   const volume = computeVolume(ability, activities, days, today);
+  const stale = !snapshot?.syncedAt || Date.now() / 1000 - snapshot.syncedAt > 36 * 3600;
+  const tuneup = days.find((d) => d.main?.category === "race" && !/静岡/.test(d.main.title));
+  const coach = coachSpeech({
+    today: days[0] ?? null,
+    daysToRace: daysBetween(today, RACE_DATE),
+    phase: weekSpecFor(today)?.phase ?? null,
+    phaseLabel: days[0]?.phaseLabel ?? null,
+    connected: conn.connected,
+    stale,
+    modes,
+    hourJst: new Date(Date.now() + 9 * 3600_000).getUTCHours(),
+    week: { done: volume.week.done, planned: volume.week.planned },
+    upcomingTuneup: tuneup ? { name: tuneup.main!.title.replace(/（.*$/, ""), inDays: daysBetween(today, tuneup.date) } : null,
+  });
   const spec = weekSpecFor(today);
   const syncedAt = snapshot?.syncedAt ?? null;
   const p = ability.paces;
@@ -142,7 +161,7 @@ async function buildPlanResponse(env: Env) {
     phase: spec ? { key: spec.phase, label: PHASE_JA[spec.phase], down: !!spec.down } : null,
     sync: {
       syncedAt,
-      stale: !syncedAt || Date.now() / 1000 - syncedAt > 36 * 3600, // 36時間以上前なら「未同期」
+      stale, // 36時間以上前なら「未同期」
       errors: snapshot?.errors ?? [],
     },
     condition: {
@@ -176,6 +195,7 @@ async function buildPlanResponse(env: Env) {
     days: days.map((d) => ({ ...d, pushed: pushed[d.date] ? { title: pushed[d.date].title, at: pushed[d.date].at } : null })),
     past: past.filter((d) => d.date >= addDays(today, -7)),
     volume,
+    coach,
     alerts,
     settings,
   };

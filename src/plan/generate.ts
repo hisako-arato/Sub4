@@ -285,7 +285,7 @@ function buildWeek(spec: WeekSpec, a: Ability, loadRatio: number | null | undefi
       category: "distance", title: "ミドル走", distanceKm: km, pace: range(a.paces.jog), menu: [`祝日なので少し長めに ${km}km`], hard: false,
       steps: [dist("training", km, a.paces.jog)],
     };
-    monNotes.push(`${HOLIDAYS[at(0)]}なので月曜を少し長めにしたよ`);
+    monNotes.push(`${HOLIDAYS[at(0)]}なんだから、月曜はちょっと長めに走るわよ！`);
   }
   if (!spec.monRest) sessions.set(at(0), { main: mon, optional: false, notes: monNotes });
 
@@ -307,7 +307,7 @@ function buildWeek(spec: WeekSpec, a: Ability, loadRatio: number | null | undefi
   sessions.set(at(weekendDay), {
     main: weekendSession(spec, a),
     optional: false,
-    notes: spec.key.kind === "tuneup" ? ["本番は 3/14。ここで頑張りすぎないのがいちばんの作戦"] : spec.label ? [spec.label] : spec.down ? ["今週は疲れを抜く軽めの週"] : [],
+    notes: spec.key.kind === "tuneup" ? ["本番は3/14よ。ここで全力なんか出したら承知しないんだから"] : spec.label ? [spec.label] : spec.down ? ["今週は疲れを抜く週。物足りなくても我慢しなさい"] : [],
   });
 
   // 任意の4回目ジョグ（余裕のある週だけ）

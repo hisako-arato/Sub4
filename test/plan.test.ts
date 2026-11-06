@@ -234,7 +234,7 @@ test("走らなかった大事な練習は、今週の空いている土日祝�
   assert.equal(sun.main?.category, "pace");
   assert.match(sun.main!.title, /短縮/);
   assert.ok(sun.main!.distanceKm < 16);
-  assert.ok(sun.notes.some((n) => n.includes("移した")));
+  assert.ok(sun.notes.some((n) => n.includes("移しといた")));
 });
 
 test("「走る予定はない」日の練習は、短縮せずに移す（ペナルティなし）", () => {
@@ -330,4 +330,40 @@ test("平日（祝日以外）の練習は 12km 以下", () => {
   for (const d of buildBaseDays(A, acts, "2026-11-07", RACE_DATE, 1.0)) {
     if (d.main && weekday(d.date) < 5 && !isHoliday(d.date)) assert.ok(d.main.distanceKm <= 12.5, `${d.date} ${d.main.title} ${d.main.distanceKm}`);
   }
+});
+
+// ---- 段階4：コーチのセリフ ----
+import { coachSpeech, type CoachContext } from "../src/coach/speech.ts";
+
+const ctxBase = (today: CoachContext["today"]): CoachContext => ({
+  today, daysToRace: 60, phase: "build", phaseLabel: "強化期", connected: true, stale: false,
+  modes: { pain: false, fatigue: false, comeback: false }, hourJst: 7, week: { done: 10, planned: 30 }, upcomingTuneup: null,
+});
+
+test("セリフ：シーズンのどの日も、名前で呼びかけ、空や undefined がない", () => {
+  for (const day of season(1.0)) {
+    const sp = coachSpeech(ctxBase(day));
+    assert.ok(sp.lines.length >= 2 && sp.lines.length <= 5, day.date);
+    assert.match(sp.lines[0], /ハルキ君/);
+    for (const l of sp.lines) assert.ok(l && !/undefined|NaN|null/.test(l), `${day.date}: ${l}`);
+  }
+});
+
+test("セリフ：痛みは心配顔で受診を促す／未接続は怒り顔／休養日はリラックス", () => {
+  const day = season(1.0)[0];
+  const pain = coachSpeech({ ...ctxBase(day), modes: { pain: true, fatigue: false, comeback: false } });
+  assert.equal(pain.expression, "sad");
+  assert.ok(pain.lines.some((l) => l.includes("病院")));
+  assert.equal(coachSpeech({ ...ctxBase(day), connected: false }).expression, "angry");
+  const rest = season(1.0).find((d) => !d.main)!;
+  assert.equal(coachSpeech(ctxBase(rest)).expression, "relaxed");
+});
+
+test("セリフ：達成した日は笑顔、ジョグが速すぎた日は怒り顔", () => {
+  const r = generateWithHistory(A, followPlan("2027-01-10"), { today: "2027-01-09", loadRatio: 1.0 });
+  const today = r.days[0]; // 1/9 ロング走を走った
+  assert.equal(today.result?.state, "ran");
+  assert.equal(coachSpeech(ctxBase(today)).expression, "happy");
+  const jogDay = { ...today, main: { ...today.main!, hard: false, category: "jog" as const }, result: { state: "ran" as const, achievement: { level: "achieved" as const, flags: ["fast" as const], avgPace: "5:10" } } };
+  assert.equal(coachSpeech(ctxBase(jogDay)).expression, "angry");
 });

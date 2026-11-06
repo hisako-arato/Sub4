@@ -174,3 +174,13 @@ i.vp { background: color-mix(in srgb, var(--accent) 45%, transparent); }
 i.vo { background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--accent) 35%, transparent) 0 3px, transparent 3px 6px); }
 .vlegend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--muted); }
 .vlegend i { display: inline-block; width: 12px; height: 10px; margin-right: 4px; vertical-align: -1px; border-radius: 2px; }
+/* ---- コーチ ---- */
+.coach { position: relative; margin: 8px 0 12px; }
+#coach-canvas { display: block; width: 100%; height: min(40vh, 320px); border-radius: 16px;
+  background: radial-gradient(ellipse at 50% 35%, color-mix(in srgb, var(--accent) 22%, var(--card)) 0%, var(--card) 70%); cursor: pointer; }
+.bubble { position: relative; margin: -36px 12px 0; background: var(--card); border: 2px solid var(--accent); border-radius: 16px;
+  padding: 12px 34px 12px 14px; min-height: 52px; font-size: 1rem; line-height: 1.6; cursor: pointer; box-shadow: 0 4px 14px rgb(0 0 0 / .12); }
+.bubble::before { content: ""; position: absolute; top: -10px; left: 50%; margin-left: -9px; border: 9px solid transparent; border-top: 0; border-bottom-color: var(--accent); }
+.bubble .more { position: absolute; right: 12px; bottom: 8px; color: var(--accent); font-size: 12px; animation: bob 1s ease-in-out infinite; }
+@keyframes bob { 50% { transform: translateY(3px); } }
+@media (prefers-reduced-motion: reduce) { .bubble .more { animation: none; } }

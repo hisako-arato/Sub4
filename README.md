@@ -46,6 +46,13 @@ PC から wrangler でデプロイする場合は `npx wrangler login` → `npx 
 - **「動的クライアント登録に対応していません」**：COROS が自動登録に非対応。画面の「認可サーバーの発見ログ」を Claude Code に共有する。クライアントIDが入手できれば `npx wrangler secret put COROS_CLIENT_ID` で設定できる。
 - **地域の問題で繋がらない**：`wrangler.toml` の `COROS_MCP_URL` を地域別 URL（例：`https://mcpus.coros.com/mcp`）に変えて再デプロイ。
 
+## 素材・ライブラリ
+| 素材 | 出典・ライセンス |
+|---|---|
+| コーチの VRM（`public/vrm/coach.vrm`） | 自作モデル。`hisako-arato/oyashiki` の `assets/vrm/view/black.vrm`（テクスチャ1024px版）を仮で流用 |
+| Three.js r170（`public/vendor/three.module.min.js` ほか） | MIT License（`public/vendor/three.LICENSE`） |
+| three-vrm（`public/vendor/three-vrm.module.min.js`） | MIT License（`public/vendor/three-vrm.LICENSE`） |
+
 ## 開発
 ```sh
 npm run typecheck
