@@ -1,0 +1,28 @@
+name = "sub4-coach"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+# 画面（HTML/JS/CSS）は public/ から配信。API・OAuth だけ Worker を通す。
+[assets]
+directory = "public"
+binding = "ASSETS"
+run_worker_first = ["/api/*", "/oauth/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "sub4"
+# `npx wrangler d1 create sub4` の出力にある database_id に書き換える
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+# 毎朝 5:00 JST（= 20:00 UTC）にトークン更新（後の段階でデータ同期もここで行う）
+[triggers]
+crons = ["0 20 * * *"]
+
+[vars]
+COROS_MCP_URL = "https://mcp.coros.com/mcp"
+
+# 秘密情報は wrangler secret で登録（README参照）
+#   APP_PASSWORD   … アプリのログインパスワード
+#   SESSION_SECRET … セッション署名用のランダム文字列
+#   COROS_CLIENT_ID / COROS_CLIENT_SECRET … COROS が動的クライアント登録に非対応だった場合のみ

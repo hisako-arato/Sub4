@@ -1,0 +1,109 @@
+// ローカル通しテスト：偽COROS + wrangler dev を起動し、ログイン → OAuth接続 → 取得テスト → トークン更新 まで確認する。
+// 実行: npm run test:e2e
+import { spawn } from "node:child_process";
+import { writeFileSync, existsSync, readFileSync, rmSync } from "node:fs";
+import assert from "node:assert/strict";
+
+const APP = "http://localhost:8787";
+const procs = [];
+const cleanup = () => procs.forEach((p) => p.kill("SIGTERM"));
+process.on("exit", cleanup);
+
+function start(cmd, args, readyText, env = {}) {
+  return new Promise((resolve, reject) => {
+    const p = spawn(cmd, args, { env: { ...process.env, ...env }, stdio: ["ignore", "pipe", "pipe"] });
+    procs.push(p);
+    let out = "";
+    const onData = (d) => {
+      out += d;
+      if (out.includes(readyText)) resolve(p);
+    };
+    p.stdout.on("data", onData);
+    p.stderr.on("data", onData);
+    p.on("exit", (code) => reject(new Error(`${cmd} exited ${code}\n${out}`)));
+    setTimeout(() => reject(new Error(`timeout waiting for ${cmd}\n${out}`)), 90_000);
+  });
+}
+
+const run = (cmd, args) =>
+  new Promise((resolve, reject) => {
+    const p = spawn(cmd, args, { stdio: "inherit" });
+    p.on("exit", (c) => (c === 0 ? resolve() : reject(new Error(`${cmd} ${args.join(" ")} failed`))));
+  });
+
+// 秘密情報（テスト用）
+const devVarsBackup = existsSync(".dev.vars") ? readFileSync(".dev.vars", "utf8") : null;
+writeFileSync(".dev.vars", "APP_PASSWORD=test-pass\nSESSION_SECRET=test-secret-0123456789\nCOROS_MCP_URL=http://localhost:8788/mcp\n");
+process.on("exit", () => (devVarsBackup !== null ? writeFileSync(".dev.vars", devVarsBackup) : rmSync(".dev.vars", { force: true })));
+
+await run("npx", ["wrangler", "d1", "migrations", "apply", "sub4", "--local"]);
+await start("node", ["test/mock-coros.mjs"], "listening");
+await start("npx", ["wrangler", "dev", "--port", "8787", "--test-scheduled"], "Ready on");
+
+let cookie = "";
+async function req(path, opts = {}) {
+  const res = await fetch(path.startsWith("http") ? path : APP + path, {
+    redirect: "manual",
+    ...opts,
+    headers: { "Content-Type": "application/json", ...(cookie ? { Cookie: cookie } : {}), ...(opts.headers ?? {}) },
+  });
+  const sc = res.headers.get("set-cookie");
+  if (sc) cookie = sc.split(";")[0];
+  return res;
+}
+
+// 1. 未ログインは 401
+assert.equal((await req("/api/status")).status, 401);
+assert.equal((await req("/api/login", { method: "POST", body: JSON.stringify({ password: "wrong" }) })).status, 401);
+
+// 2. ログイン
+assert.equal((await req("/api/login", { method: "POST", body: JSON.stringify({ password: "test-pass" }) })).status, 200);
+let status = await (await req("/api/status")).json();
+assert.equal(status.coros.connected, false);
+
+// 3. OAuth: /oauth/start → 偽COROS /authorize → /oauth/callback
+let res = await req("/oauth/start");
+assert.equal(res.status, 302);
+const authorizeUrl = res.headers.get("location");
+assert.match(authorizeUrl, /code_challenge_method=S256/);
+res = await req(authorizeUrl);
+assert.equal(res.status, 302, "authorize should redirect back");
+res = await req(res.headers.get("location"));
+assert.equal(res.status, 302);
+assert.match(res.headers.get("location"), /connected=1/, `callback failed: ${res.headers.get("location")}`);
+
+status = await (await req("/api/status")).json();
+assert.equal(status.coros.connected, true);
+assert.equal(status.coros.has_refresh_token, true);
+console.log("discovery log:", status.coros.auth_server.discovered_via);
+
+// 4. 取得テスト
+res = await req("/api/probe", { method: "POST" });
+const probe = await res.json();
+assert.equal(res.status, 200, JSON.stringify(probe));
+const byTool = Object.fromEntries(probe.calls.map((c) => [c.tool, c]));
+assert.equal(byTool.queryUserInfo.ok, true);
+assert.equal(byTool.getActivityDetail.ok, true, "race activity should be detected via labelId/sportType");
+assert.deepEqual(byTool.getActivityDetail.args, { labelId: "L-RACE", sportType: 100 });
+assert.equal(byTool.queryRecoveryStatus.ok, false, "isError results are reported as failures");
+assert.deepEqual(probe.write_tools_available.sort(), ["createScheduledWorkout", "createTrainingPlan"]);
+assert.ok(!probe.calls.some((c) => c.tool.startsWith("create")), "write tools must never be called");
+const latest = await (await req("/api/probe/latest")).json();
+assert.equal(latest.id, probe.id);
+
+// 5. Cron（期限が近いのでトークン更新される: 偽COROSは expires_in=3600）
+const before = status.coros.obtained_at;
+await new Promise((r) => setTimeout(r, 1100));
+res = await fetch(`${APP}/__scheduled?cron=0+20+*+*+*`);
+assert.equal(res.status, 200);
+await new Promise((r) => setTimeout(r, 500));
+status = await (await req("/api/status")).json();
+assert.ok(status.coros.obtained_at > before, "token should be refreshed by cron");
+
+// 更新後も MCP 呼び出しが通る
+res = await req("/api/probe", { method: "POST" });
+assert.equal(res.status, 200);
+
+console.log(`\nE2E OK: ${probe.calls.filter((c) => c.ok).length}/${probe.calls.length} calls ok, tools=${probe.tools.length}`);
+cleanup();
+process.exit(0);
