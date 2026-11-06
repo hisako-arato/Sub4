@@ -85,11 +85,19 @@ function renderProbe(r) {
 
 $("login-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const password = new FormData(e.target).get("password");
+  const password = String(new FormData(e.target).get("password") ?? "").trim();
   $("login-msg").textContent = "確認中…";
   const { status, body } = await api("/api/login", { method: "POST", body: JSON.stringify({ password }) });
-  $("login-msg").textContent = status === 200 ? "" : body?.error || "ログインに失敗しました";
-  if (status === 200) refresh();
+  if (status !== 200) {
+    const detail = body?.message ? `（${body.message}）` : "";
+    $("login-msg").textContent = `${body?.error || "ログインに失敗しました"}${detail} [HTTP ${status}]`;
+    return;
+  }
+  $("login-msg").textContent = "";
+  await refresh();
+  if (!$("login").hidden) {
+    $("login-msg").textContent = "パスワードは正しいのに、ログイン状態を保存できませんでした（Cookie がブロックされている可能性）。";
+  }
 });
 
 $("logout").addEventListener("click", async () => {

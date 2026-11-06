@@ -59,7 +59,8 @@ export async function login(req: Request, env: Env): Promise<Response> {
     return Response.json({ error: "APP_PASSWORD が未設定です（Cloudflare の Worker 設定で登録してください）" }, { status: 500 });
   }
   const body = (await req.json().catch(() => ({}))) as { password?: string };
-  if (!timingSafeEqual(body.password ?? "", env.APP_PASSWORD)) {
+  // スマホでの貼り付けで混ざりやすい前後の空白・改行は無視する
+  if (!timingSafeEqual((body.password ?? "").trim(), env.APP_PASSWORD.trim())) {
     await new Promise((r) => setTimeout(r, 800)); // 総当たり対策の小さな遅延
     return Response.json({ error: "パスワードが違います" }, { status: 401 });
   }
