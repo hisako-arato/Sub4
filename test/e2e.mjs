@@ -112,7 +112,7 @@ assert.equal(res.status, 200, JSON.stringify(plan));
 assert.equal(plan.sync.stale, false);
 assert.equal(plan.ability.race.date, "2026-11-03");
 assert.equal(plan.condition.loadRatio, 1.36);
-assert.ok(plan.days.length > 0 && plan.days.length <= 14);
+assert.ok(plan.days.length >= 14 && plan.days.length <= 28, "今日〜再来週の日曜まで");
 console.log(`plan: today=${plan.today} phase=${plan.phase?.label} first=${plan.days.find((d) => d.main)?.main.title}`);
 
 // 4c. 時計に送る → 同じ日をもう一度送ると「更新」になる
