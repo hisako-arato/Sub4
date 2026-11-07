@@ -34,6 +34,11 @@ window.__coach = coach; // 動作確認用
 
 // ---- タブ・切り替え ----
 function setTab(name) {
+  const was = document.querySelector(".tabbar button.on")?.dataset.tab;
+  if (name === "care" && was !== "care" && !session) {
+    show("care-all", false);
+    show("care-list");
+  }
   if (name !== "care" && session) stopCareSession(false);
   for (const b of document.querySelectorAll(".tabbar button")) b.classList.toggle("on", b.dataset.tab === name);
   for (const p of document.querySelectorAll(".panel")) p.hidden = p.id !== `tab-${name}`;
@@ -276,6 +281,7 @@ function renderCareAll(plan) {
   if (!lib.length) return;
   const g = lib.find((x) => x.category === careCat) ?? lib[0];
   $("care-all").innerHTML = `
+    <button class="back-btn" id="close-library">‹ 今日のケア</button>
     <div class="chips">${lib.map((x) => `<button class="chip ${x.category === g.category ? "on" : ""}" data-cat="${x.category}">${esc(x.label)}</button>`).join("")}</div>
     <div class="panel-head"><span>${esc(g.label)}</span><button class="small all-session-btn" data-cat="${g.category}">▶ まとめてやる（${g.items.length}種目）</button></div>
     <ul class="rows">${g.items
@@ -307,7 +313,8 @@ function renderCare(plan) {
     html += `<div class="sub-row"><p class="sub">💪 今日の補強（${sp.sets}セット）${sp.done ? ' <span class="lv lv-ok">✓ COROS に記録あり</span>' : ""}</p>
       <button class="small ghost strength-btn">▶ まとめてやる</button></div><ul class="rows">${rows(sp.items)}</ul>`;
   }
-  html += `<p class="sub">セルフケア</p><p class="selfcare">${c.selfCare.map(esc).join("／")}</p>`;
+  html += `<p class="sub selfcare">セルフケア</p><p class="selfcare">${c.selfCare.map(esc).join("／")}</p>`;
+  html += `<button class="link-row" id="open-library">📚 種目一覧（全${(plan.library ?? []).reduce((n, g) => n + g.items.length, 0)}種目）<span>›</span></button>`;
   $("care-list").innerHTML = html;
 }
 
@@ -570,6 +577,16 @@ document.addEventListener("click", async (e) => {
     const st = findExercise(demoBtn.dataset.id);
     closeSheet();
     if (st) startCareSession([st]);
+    return;
+  }
+  if (e.target.closest("#open-library")) {
+    show("care-list", false);
+    show("care-all");
+    return;
+  }
+  if (e.target.closest("#close-library")) {
+    show("care-all", false);
+    show("care-list");
     return;
   }
   const chip = e.target.closest(".chip[data-cat]");

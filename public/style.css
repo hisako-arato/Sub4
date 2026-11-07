@@ -164,7 +164,7 @@ ul.rows li { flex: 1 1 0; min-height: 0; max-height: 44px; display: flex; }
 #tab-care ul.rows, #past-box ul.rows { flex: 0 1 auto; }
 #tab-care ul.rows li { flex: none; height: 40px; }
 #past-box { flex: 1; min-height: 0; display: flex; }
-.selfcare { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+p.selfcare:not(.sub) { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
 
 /* ---- 栄養 ---- */
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -359,3 +359,7 @@ ul.calls { list-style: none; padding: 0; font-size: 13px; }
 .cs-str.done { color: var(--ok); font-weight: 700; }
 .sub-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
 .sheet-str { margin-top: 10px; padding: 8px 10px; border-radius: 10px; background: var(--bg); }
+/* ケア：今日を基本に、種目一覧は奥（2026-11-07 案1） */
+.link-row { display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: auto; background: var(--card); color: var(--accent); border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px; font-size: 14px; font-weight: 700; flex: none; }
+.link-row span { font-size: 18px; }
+.back-btn { align-self: flex-start; background: none; color: var(--accent); padding: 2px 0; font-size: 14px; font-weight: 700; flex: none; }
