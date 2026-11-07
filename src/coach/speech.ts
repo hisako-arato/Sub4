@@ -171,8 +171,8 @@ export function coachSpeech(ctx: CoachContext): Speech {
     const pre = c.before.length ? `走る前は${c.before.map((x) => x.name).join("・")}で体を温めて、` : "";
     lines.push(
       chosen
-        ? `${pre}走ったあとは${names}を${hold}秒ずつ伸ばしなさい。やり方は下の「今日のケア」から聞いてね`
-        : `休みの日は${names}で体をゆるめるのがおすすめよ。やり方は下の「今日のケア」から聞いてね`,
+        ? `${pre}走ったあとは${names}を${hold}秒ずつ伸ばしなさい。ケアのタブで、あたしが見本を見せてあげる`
+        : `休みの日は${names}で体をゆるめるのがおすすめよ。ケアのタブで、あたしが見本を見せてあげる`,
     );
   }
 

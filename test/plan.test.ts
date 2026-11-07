@@ -448,3 +448,23 @@ test("気づき：持久力の差・後半の失速・速すぎるジョグを�
   for (const i of ins) assert.ok(i.coach && !/undefined|NaN/.test(i.text + i.value + i.coach), i.id);
   assert.equal(ins[0].level, "warn", "注意すべき気づきが先頭");
 });
+
+// ---- ストレッチの実演（自作キーフレーム） ----
+test("ケアで出すストレッチは全部、アバターの動き（左右）がある", async () => {
+  const { STRETCH_MOTION, stretchPose, mirror } = await import("../public/stretch-motion.js");
+  for (const id of Object.keys(STRETCHES)) {
+    assert.ok(STRETCH_MOTION[id], `${id} の動きがない`);
+    for (const side of ["left", "right"]) {
+      for (const t of [0, 0.7, 3.1]) {
+        const p = stretchPose(id, side, t);
+        for (const [bone, r] of Object.entries(p as Record<string, number[]>)) {
+          assert.ok(r.length === 3 && r.every((v) => Number.isFinite(v) && Math.abs(v) < Math.PI), `${id} ${side} ${bone}`);
+        }
+      }
+    }
+  }
+  // 左右の入れ替えは2回で元に戻る
+  const p = STRETCH_MOTION.quad.pose(1);
+  assert.deepEqual(mirror(mirror(p)), p);
+  assert.deepEqual(mirror({ leftUpperLeg: [0.1, 0.2, 0.3] }), { rightUpperLeg: [0.1, -0.2, -0.3] });
+});

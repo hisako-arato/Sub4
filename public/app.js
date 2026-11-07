@@ -22,6 +22,7 @@ const fmtDur = (s) => {
 
 let lastPlan = null;
 let lastProbe = null;
+let session = null; // ケアの実演中の状態
 let autoSynced = false;
 let coach = null;
 try {
@@ -29,9 +30,11 @@ try {
 } catch (e) {
   console.warn("coach unavailable", e);
 }
+window.__coach = coach; // 動作確認用
 
 // ---- タブ・切り替え ----
 function setTab(name) {
+  if (name !== "care" && session) stopCareSession(false);
   for (const b of document.querySelectorAll(".tabbar button")) b.classList.toggle("on", b.dataset.tab === name);
   for (const p of document.querySelectorAll(".panel")) p.hidden = p.id !== `tab-${name}`;
 }
@@ -267,10 +270,13 @@ function renderCare(plan) {
     list
       .map(
         (st) => `<li><div class="rowbtn" data-sheet="stretch" data-id="${st.id}"><span class="t"><strong>${esc(st.name)}</strong> <small class="muted">${holdText(st)}</small></span>
-        <button class="small ghost ask-btn" data-id="${st.id}">🗣 教わる</button></div></li>`,
+        <button class="small ghost demo-btn" data-id="${st.id}">▶ 見本</button></div></li>`,
       )
       .join("");
-  let html = `<div class="panel-head"><span>${esc(c.title)}</span></div>`;
+  const n = c.before.length + c.after.length;
+  const done = careDoneToday(plan.today);
+  let html = `<div class="panel-head"><span>${esc(c.title)}${done ? ' <span class="lv lv-ok">✓ 完了</span>' : ""}</span>${
+    n ? `<button class="small session-btn">▶ まとめてやる（${n}種目）</button>` : ""}</div>`;
   if (c.caution) html += `<div class="alert warn">${esc(c.caution)}</div>`;
   if (c.before.length) html += `<p class="sub">走る前</p><ul class="rows">${rows(c.before)}</ul>`;
   if (c.after.length) html += `<p class="sub">${plan.days[0]?.main ? "走ったあと" : "今日のストレッチ"}</p><ul class="rows">${rows(c.after)}</ul>`;
@@ -422,7 +428,7 @@ function renderSheet() {
     if (!st) return closeSheet();
     html += `<h3>${esc(st.name)} <small class="muted">${esc(st.target)}・${holdText(st)}</small></h3>
       <ol class="steps">${st.steps.map((x) => `<li>${esc(x)}</li>`).join("")}</ol>
-      <button class="small ask-btn" data-id="${st.id}">🗣 コーチに教わる</button>`;
+      <button class="small demo-btn" data-id="${st.id}">▶ コーチの見本</button>`;
   } else if (kind === "food") {
     const n = lastPlan.nutrition;
     if (!n) return closeSheet();
@@ -532,7 +538,19 @@ document.addEventListener("click", async (e) => {
     }
     return;
   }
-  // ストレッチのやり方をコーチが説明する（動作の見本は第一段階では作らない）
+  // ストレッチの実演（コーチが動いて見せる）
+  const demoBtn = e.target.closest(".demo-btn");
+  if (demoBtn) {
+    e.stopPropagation();
+    const st = [...(lastPlan?.care?.before ?? []), ...(lastPlan?.care?.after ?? [])].find((x) => x.id === demoBtn.dataset.id);
+    closeSheet();
+    if (st) startCareSession([st]);
+    return;
+  }
+  if (e.target.closest(".session-btn")) {
+    startCareSession([...(lastPlan?.care?.before ?? []), ...(lastPlan?.care?.after ?? [])]);
+    return;
+  }
   const ask = e.target.closest(".ask-btn");
   if (ask) {
     e.stopPropagation();
@@ -649,3 +667,127 @@ if (params.get("login_required")) $("login-msg").textContent = "先にログイ�
 if ([...params.keys()].length) history.replaceState(null, "", "/");
 
 refresh();
+
+// ---- ケアの実演（コーチがストレッチを動いて見せ、時間を数える） ----
+const careKey = (d) => `sub4-care-${d}`;
+function careDoneToday(d) {
+  try {
+    return localStorage.getItem(careKey(d)) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** 実演の流れ：手順を話しながら構える → 保持（秒を数える）→ 反対側 → 次の種目 */
+function buildSteps(list) {
+  const steps = [];
+  list.forEach((st, i) => {
+    const sides = st.sides ? ["left", "right"] : ["left"];
+    const holdSec = st.kind === "dynamic" ? 14 : st.holdSec;
+    const lines = st.speech?.lines ?? [st.name];
+    sides.forEach((side, k) => {
+      const label = st.sides ? (side === "left" ? "左" : "右") : "";
+      if (k === 0) {
+        const intro = [i > 0 ? `次は${st.name}よ！` : lines[0], ...lines.slice(1, -1)];
+        intro.forEach((l, j) => steps.push({ st, side, label, phase: "prep", sec: Math.max(2.5, l.length * 0.12), line: l, first: j === 0 }));
+        steps.push({ st, side, label, phase: "hold", sec: holdSec, line: lines.at(-1) });
+      } else {
+        steps.push({ st, side, label, phase: "prep", sec: 2.5, line: "反対側！ 同じように構えて" });
+        steps.push({ st, side, label, phase: "hold", sec: holdSec, line: "そのままキープ。呼吸は止めないのよ" });
+      }
+    });
+  });
+  return steps;
+}
+
+function startCareSession(list) {
+  if (!list.length || !coach) return;
+  setTab("care");
+  session = { steps: buildSteps(list), list, i: -1, left: 0, paused: false, timer: null, last: performance.now(), said10: false };
+  document.querySelector(".shell").classList.add("demo");
+  show("care-list", false);
+  show("care-session");
+  nextStep();
+  session.timer = setInterval(tickSession, 200);
+}
+
+function nextStep() {
+  session.i++;
+  const step = session.steps[session.i];
+  if (!step) return finishCareSession();
+  session.left = step.sec;
+  session.said10 = false;
+  coach.demo(step.st.id, step.side);
+  coach.say({ expression: step.phase === "hold" ? "relaxed" : "happy", lines: [step.line] }, { restart: true });
+  renderSession();
+}
+
+function tickSession() {
+  if (!session || session.paused) {
+    if (session) session.last = performance.now();
+    return;
+  }
+  const now = performance.now();
+  session.left -= (now - session.last) / 1000;
+  session.last = now;
+  const step = session.steps[session.i];
+  if (step.phase === "hold" && step.sec >= 20 && !session.said10 && session.left <= 10) {
+    session.said10 = true;
+    coach.say({ expression: "happy", lines: ["あと10秒！ もうひと息よ"] }, { restart: true });
+  }
+  if (session.left <= 0) nextStep();
+  else updateCount();
+}
+
+/** 秒数だけ書き換える（ボタンは作り直さないので、押し損じない） */
+function updateCount() {
+  const step = session?.steps[session.i];
+  const el = document.querySelector("#care-session .cs-count");
+  if (step && el && step.phase === "hold") el.innerHTML = `${Math.max(0, Math.ceil(session.left))}<small>秒</small>`;
+}
+
+function renderSession() {
+  const step = session.steps[session.i];
+  if (!step) return;
+  const idx = session.list.indexOf(step.st);
+  const dots = session.list.map((_, k) => `<i class="${k < idx ? "done" : k === idx ? "cur" : ""}"></i>`).join("");
+  const sec = Math.max(0, Math.ceil(session.left));
+  $("care-session").innerHTML = `
+    <div class="cs-name"><b>${esc(step.st.name)}</b>${step.label ? `<span class="side">${step.label}</span>` : ""}<span class="muted">${esc(step.st.target)}</span></div>
+    <div class="cs-count ${step.phase}">${step.phase === "hold" ? `${sec}<small>秒</small>` : "構えて"}</div>
+    <div class="cs-dots">${dots}</div>
+    <div class="cs-ctrl">
+      <button class="small ghost" id="ss-pause">${session.paused ? "▶ 再開" : "⏸ 一時停止"}</button>
+      <button class="small ghost" id="ss-next">⏭ 次へ</button>
+      <button class="small ghost" id="ss-stop">✕ やめる</button>
+    </div>
+    <p class="hint warn-text">痛みが出たらすぐ中止。反動はつけず、気持ちいいところで止めてね</p>`;
+}
+
+function finishCareSession() {
+  try {
+    localStorage.setItem(careKey(lastPlan?.today ?? ""), "1");
+  } catch {}
+  stopCareSession(true);
+}
+
+function stopCareSession(done) {
+  if (!session) return;
+  clearInterval(session.timer);
+  session = null;
+  coach?.demo(null);
+  document.querySelector(".shell").classList.remove("demo");
+  show("care-session", false);
+  show("care-list");
+  coach?.say({ expression: "happy", lines: [done ? "おつかれさま、ハルキ君！ 今日のケアは完了よ。えらいじゃない" : "今日はここまでね。続きはまた今度でいいわ"] }, { restart: true });
+  if (lastPlan) renderCare(lastPlan);
+}
+
+document.addEventListener("click", (e) => {
+  if (!session) return;
+  if (e.target.id === "ss-pause") {
+    session.paused = !session.paused;
+    e.target.textContent = session.paused ? "▶ 再開" : "⏸ 一時停止";
+  } else if (e.target.id === "ss-next") nextStep();
+  else if (e.target.id === "ss-stop") stopCareSession(false);
+});
