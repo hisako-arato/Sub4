@@ -108,7 +108,8 @@ export function findStrengthWorkoutId(data: unknown): { id: string; name: string
     const name = b.match(/^\s*\d+[.)]\s*(.+)$/m)?.[1]?.trim() ?? b.match(/(?:Name|Workout Name)\s*[:：]\s*(.+)/i)?.[1]?.trim();
     if (!name || !STRENGTH_NAME.test(name)) continue;
     const id = b.match(/(?:Workout\s*ID|Course\s*ID|\bID)\s*[:：=]\s*([\w-]+)/i)?.[1];
-    if (id) return { id, name };
+    // 名前の後ろの「[Strength] [custom]」などの分類は表示しない
+    if (id) return { id, name: name.replace(/\s*\[[^\]]*\]/g, "").trim() };
   }
   return null;
 }

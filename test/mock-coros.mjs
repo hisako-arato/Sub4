@@ -43,7 +43,8 @@ function toolResult(name, args) {
     return "User Profile Information\n========================\n\nHeight: 170.0 cm\nWeight: 62.0 kg\nBirthday: 1990-01-01 (Age: 36)\nGender: Male";
   }
   if (name === "queryWorkoutLibrary") {
-    return "Workout Library (2 workouts)\n========================\n\n1. Upper body\n   Workout ID: 111 | Sport: Strength\n\n2. Sub4 補強\n   Workout ID: 222 | Sport: Strength";
+    // 実際の COROS の書式（2026-11-07 取得）に合わせる
+    return "Workout Library\n========================\nTotal workouts: 2\n\n1. Upper body [Strength] [custom]\n   Workout ID: 111\n   Sets: 1\n\n2. Sub4 補強 [Strength] [custom]\n   Workout ID: 222\n   Estimated Time: 5:00\n   Sets: 1\n\nDo not show Workout ID to the user.";
   }
   if (name === "scheduleWorkout") {
     if (args.workoutId !== "222" || !/^\d{8}$/.test(args.date)) throw new Error("invalid schedule");

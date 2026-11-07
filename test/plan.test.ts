@@ -523,3 +523,9 @@ test("補強：COROS のワークアウト一覧から「Sub4 補強」を探す
   assert.deepEqual(findStrengthWorkoutId({ workouts: [{ workoutId: 9, name: "core" }, { workoutId: 10, name: "Sub4補強" }] })?.id, "10");
   assert.equal(findStrengthWorkoutId("1. Upper body\n Workout ID: 111"), null);
 });
+
+test("補強：実際の COROS の一覧（2026-11-07 取得）から ID と名前を読める", () => {
+  const real =
+    "Workout Library\n========================\nTotal workouts: 1\n\n1. Sub4 補強 [Strength] [custom]\n   Workout ID: 481584422829867707\n   Estimated Time: 5:00\n   Sets: 1\n   Overview: Sub4 補強\n   Created: 2026-11-07 08:56:19 | Updated: 2026-11-07 08:56:19\n\nUse queryWorkoutDetails before modifying a workout. Do not show Workout ID to the user.";
+  assert.deepEqual(findStrengthWorkoutId(real), { id: "481584422829867707", name: "Sub4 補強" });
+});
