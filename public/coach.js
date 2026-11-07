@@ -13,6 +13,20 @@ const BONES = [
 const FEET = ["leftFoot", "rightFoot", "leftToes", "rightToes"];
 
 const EXPRESSIONS = ["happy", "angry", "sad", "relaxed", "surprised"];
+// 表情の強さ。普段（base）は目が開いたままの控えめな強さ、話し始め（peak）ははっきり。
+// このモデルの happy は 0.5 を超えると目が細くなり、0.8 で閉じる（「^^」）。褒めるときだけ一瞬使う。
+const BASE_W = { happy: 0.3, relaxed: 0.3, angry: 0.55, sad: 0.6, surprised: 0.35, neutral: 0 };
+const PEAK_W = { happy: 0.55, relaxed: 0.45, angry: 0.9, sad: 0.85, surprised: 0.8, neutral: 0 };
+
+/** セリフの中身から表情を選ぶ（なければコーチ全体の気分） */
+function lineExpression(line, mood) {
+  if (/痛|病院|受診|心配|大丈夫？/.test(line)) return "sad";
+  if (/ちょっと！|速すぎ|ダメ|許さない|禁止|承知しない|なさい！|古いわよ/.test(line)) return "angry";
+  if (/!\?|！？|えっ|まさか|なのに走った/.test(line)) return "surprised";
+  if (/えらい|やるじゃない|ばっちり|おめでとう|完了|さすが|やりきった|できた/.test(line)) return "praise";
+  if (/休|のんびり|ゆっくり|楽に|キープ/.test(line)) return "relaxed";
+  return mood;
+}
 const TYPE_MS = 45; // 1文字あたり
 
 export function createCoach({ canvas, bubble, text, more, url = "/vrm/coach.vrm" }) {
@@ -41,6 +55,12 @@ export function createCoach({ canvas, bubble, text, more, url = "/vrm/coach.vrm"
   let t = 0;
   // ストレッチの実演：{ id, side, start }。null のときは立ち姿
   let motion = null;
+  let debugFace = null;
+  // 話し始めの表情（はっきり出して、少しずつ普段の強さへ）
+  let pulse = { name: "neutral", at: 0, praise: false };
+  // 視線：カメラを見つつ、ときどき少しそらす
+  const gaze = new THREE.Object3D();
+  let gazeOff = new THREE.Vector3(), gazeAt = 1.5;
   let baseYaw = 0, yaw = 0, groundY = 0, full = 0;
   const frames = { upper: null, full: null };
   const camPos = new THREE.Vector3(), camLook = new THREE.Vector3();
@@ -72,6 +92,11 @@ export function createCoach({ canvas, bubble, text, more, url = "/vrm/coach.vrm"
         VRMUtils.rotateVRM0(vrm); // VRM 0.x はこちらを向くように回す
         vrm.scene.traverse((o) => o.isMesh && (o.frustumCulled = false));
         scene.add(vrm.scene);
+        scene.add(gaze);
+        if (vrm.lookAt) {
+          vrm.lookAt.target = gaze;
+          vrm.lookAt.autoUpdate = true;
+        }
         baseYaw = vrm.scene.rotation.y;
         applyPose(idlePose(0), 1);
         vrm.update(0);
@@ -156,11 +181,27 @@ export function createCoach({ canvas, bubble, text, more, url = "/vrm/coach.vrm"
     if (blinkAt < 0) blinkAt = 2.5 + Math.random() * 3;
     const blink = blinkAt < 0.15 ? Math.sin((blinkAt / 0.15) * Math.PI) : 0;
 
-    // 表情は少しずつ切り替える
-    for (const k of EXPRESSIONS) face[k] += ((k === mood ? 0.85 : 0) - face[k]) * Math.min(1, dt * 6);
+    // 表情：話し始めに強く出し、2秒ほどで普段の強さへ。褒めるときは一瞬「^^」
+    const since = (performance.now() - pulse.at) / 1000;
+    const decay = Math.max(0, 1 - since / 2.2);
+    for (const k of EXPRESSIONS) {
+      let w = k === mood ? BASE_W[k] : 0;
+      if (k === pulse.name) w = Math.max(w, BASE_W[k] + (PEAK_W[k] - BASE_W[k]) * decay);
+      if (pulse.praise && k === "happy") w = Math.max(w, since < 0.9 ? 0.9 : BASE_W.happy + 0.25 * decay);
+      face[k] += (w - face[k]) * Math.min(1, dt * 8);
+    }
+    // 視線：カメラの少し手前をみる。数秒ごとに少しだけそらす
+    gazeAt -= dt;
+    if (gazeAt < 0) {
+      gazeAt = 1.5 + Math.random() * 3;
+      gazeOff.set((Math.random() - 0.5) * 0.25, (Math.random() - 0.5) * 0.12, 0);
+      if (Math.random() < 0.5) gazeOff.set(0, 0, 0);
+    }
+    gaze.position.copy(camera.position).add(gazeOff);
     face.aa += ((talking ? (Math.sin(t * 22) * 0.5 + 0.5) * 0.6 : 0) - face.aa) * Math.min(1, dt * 18);
-    face.blink = mood === "happy" || mood === "relaxed" ? blink * 0.5 : blink;
+    face.blink = face.happy > 0.6 ? 0 : blink; // 「^^」のときはまばたきしない
     const em = vrm.expressionManager;
+    if (debugFace) for (const k of Object.keys(face)) face[k] = k === debugFace.name ? debugFace.w : 0;
     if (em) for (const [k, v] of Object.entries(face)) em.setValue(k, v);
 
     vrm.update(dt);
@@ -173,6 +214,8 @@ export function createCoach({ canvas, bubble, text, more, url = "/vrm/coach.vrm"
   // 1文字ずつ表示しながら口を動かす
   function show() {
     const line = lines[idx] ?? "";
+    const ex = lineExpression(line, mood);
+    pulse = { name: ex === "praise" ? "happy" : ex, at: performance.now(), praise: ex === "praise" };
     clearInterval(typing);
     let n = 0;
     text.textContent = "";
@@ -207,6 +250,10 @@ export function createCoach({ canvas, bubble, text, more, url = "/vrm/coach.vrm"
   bubble.addEventListener("click", next);
 
   return {
+    /** 動作確認用：表情を固定する（null で解除） */
+    debugFace(name, w) {
+      debugFace = name ? { name, w } : null;
+    },
     /** ストレッチを実演する（id, side）。null で立ち姿に戻る */
     demo(id, side = "left") {
       motion = id ? { id, side, start: performance.now() } : null;
