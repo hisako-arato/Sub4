@@ -40,7 +40,11 @@ export function computeVolume(a: Ability, activities: Activity[], adjusted: DayP
   const mon = mondayOf(today);
   const sun = addDays(mon, 6);
   const inW = (d: string) => d >= mon && d <= sun;
+  const weekDays = [...adjusted, ...later].filter((d) => inW(d.date));
+  const strengthPlanned = weekDays.filter((d) => d.strength && !d.strength.skipped).length;
+  const strengthDone = weekDays.filter((d) => d.strength?.done).length;
   const week = {
+    strength: { done: strengthDone, planned: strengthPlanned },
     done: r1(runs.filter((r) => inW(r.date) && r.date <= today).reduce((s, r) => s + r.distanceKm, 0)),
     planned: r1(futureDays.filter((d) => inW(d.date) && d.main && !d.optional).reduce((s, d) => s + d.main!.distanceKm, 0)),
     optional: r1(futureDays.filter((d) => inW(d.date) && d.main && d.optional).reduce((s, d) => s + d.main!.distanceKm, 0)),

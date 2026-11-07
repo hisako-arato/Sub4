@@ -158,6 +158,14 @@ export function coachSpeech(ctx: CoachContext): Speech {
   // 計画を調整した理由（コーチのひと言）
   if (d?.notes.length) lines.push(d.notes[0]);
 
+  // 補強（筋トレ）の日
+  const sd = d?.strength;
+  if (sd && !ctx.modes.pain) {
+    if (sd.done) lines.push("補強もちゃんとやったわね。脚が強くなれば、30km からが楽になるのよ");
+    else if (sd.skipped) lines.push("今日は補強もお休み。回復が先よ");
+    else lines.push(pick(seed + "st", [`今日は補強の日よ。${sd.sets}セット、10分だけ付き合いなさい`, `補強の日！ 後半で失速しない脚は、今日みたいな地味な日に作られるのよ`]));
+  }
+
   // データから分かったこと（気づき）。注意すべきものを優先し、日替わりで1つ
   const ins = ctx.insights ?? [];
   const pool = ins.filter((x) => x.level === "warn").length ? ins.filter((x) => x.level === "warn") : ins;

@@ -96,7 +96,7 @@ assert.equal(byTool.queryUserInfo.ok, true);
 assert.equal(byTool.getActivityDetail.ok, true, "race activity should be detected via labelId/sportType");
 assert.deepEqual(byTool.getActivityDetail.args, { labelId: "481490330831585282", sportType: 100 });
 assert.equal(byTool.queryRecoveryStatus.ok, false, "isError results are reported as failures");
-assert.deepEqual(probe.write_tools_available.sort(), ["createScheduledWorkout", "createTrainingPlan"]);
+assert.deepEqual(probe.write_tools_available.sort(), ["createScheduledWorkout", "createTrainingPlan", "scheduleWorkout"]);
 assert.ok(!probe.calls.some((c) => c.tool.startsWith("create")), "write tools must never be called");
 const latest = await (await req("/api/probe/latest")).json();
 assert.equal(latest.id, probe.id);
@@ -159,6 +159,20 @@ const ids = p3.insights.map((i) => i.id);
 assert.ok(ids.includes("endurance") && ids.includes("fade"), ids.join(","));
 assert.match(p3.insights.find((i) => i.id === "fade").text, /25km 付近/);
 assert.ok(p3.season.segments.some((g) => g.label === "台北"));
+
+// 4f. 補強：予定がある日だけ、COROS の「Sub4 補強」を時計の予定へ
+const strengthDay = p3.days.find((d) => d.strength && !d.strength.skipped);
+assert.ok(strengthDay, "2週間のうちに補強の日がある");
+res = await req("/api/push-strength", { method: "POST", body: JSON.stringify({ date: strengthDay.date }) });
+const ps = await res.json();
+assert.equal(res.status, 200, JSON.stringify(ps));
+assert.match(ps.name, /Sub4/);
+assert.ok(!/\b9\b/.test(ps.message), "内部IDは見せない");
+p3 = await (await req("/api/plan")).json();
+assert.ok(p3.days.find((d) => d.date === strengthDay.date).strengthPushed);
+const noStrength = p3.days.find((d) => !d.strength);
+res = await req("/api/push-strength", { method: "POST", body: JSON.stringify({ date: noStrength.date }) });
+assert.equal(res.status, 400);
 
 // 5. Cron（期限が近いのでトークン更新される: 偽COROSは expires_in=3600）
 const before = status.coros.obtained_at;

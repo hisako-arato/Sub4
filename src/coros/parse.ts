@@ -51,6 +51,11 @@ export function parseSportRecords(text: unknown): Activity[] {
   return out;
 }
 
+/** 筋トレの活動か（時計の「筋トレ」モード。COROS の種目コード 402、または名前で判定） */
+export function isStrength(a: Pick<Activity, "sportType" | "title">): boolean {
+  return a.sportType === 402 || /strength|筋トレ|筋力|gym/i.test(a.title);
+}
+
 export function isRun(a: Pick<Activity, "sportType" | "title">): boolean {
   return /run/i.test(a.title) || (a.sportType >= 100 && a.sportType <= 104);
 }

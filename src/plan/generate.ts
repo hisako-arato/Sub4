@@ -5,7 +5,7 @@ import type { Activity } from "../coros/parse.ts";
 import { isRun } from "../coros/parse.ts";
 import type { Ability } from "./ability.ts";
 import {
-  addDays, HOLIDAYS, isHoliday, mondayOf, PHASE_JA, RACE_DATE, weekday, weekSpecFor, WEEKDAY_JA, type Phase, type WeekSpec,
+  addDays, HOLIDAYS, isHoliday, mondayOf, PHASE_JA, RACE_DATE, strengthFor, weekday, weekSpecFor, WEEKDAY_JA, type Phase, type WeekSpec,
 } from "./calendar.ts";
 import { fmtPace } from "./vdot.ts";
 import { adjustPlan, type AchievementSettings, type DayLog, type DayResult } from "./adjust.ts";
@@ -49,6 +49,15 @@ export interface DayPlan {
   optional: boolean; // 任意の4回目ジョグ
   notes: string[]; // 調整の理由（コーチのひと言の材料）
   actual: { distanceKm: number; durationS: number; avgHr?: number; title: string }[];
+  strength: StrengthDay | null; // 補強（筋トレ）の予定
+}
+
+export interface StrengthDay {
+  sets: number;
+  light: boolean;
+  items: string[]; // care.ts の種目 id
+  done: boolean; // COROS に筋トレの記録がある
+  skipped?: string; // 休みにした理由
 }
 
 export interface PlanOptions {
@@ -343,8 +352,20 @@ export function buildBaseDays(a: Ability, activities: Activity[], from: string, 
     const spec = weekSpecFor(date);
     const entry = getWeek(date)?.sessions.get(date);
     const main = entry?.main ?? null;
+    const st = spec ? strengthFor(spec) : null;
+    const strength: StrengthDay | null =
+      st && st.days.includes(weekday(date))
+        ? {
+            sets: st.sets,
+            light: st.light,
+            // 基礎期は両脚の種目、強化期からは片脚スクワットも。軽めの日は3種目
+            items: st.light ? ["calfraise", "hiplift", "plank"] : spec!.phase === "base" ? ["calfraise", "splitsquat", "hiplift", "plank"] : ["calfraise", "singlesquat", "splitsquat", "hiplift", "plank"],
+            done: false,
+          }
+        : null;
     out.push({
       date,
+      strength,
       weekday: WEEKDAY_JA[weekday(date)],
       holiday: HOLIDAYS[date],
       phase: spec?.phase ?? null,

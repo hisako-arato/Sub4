@@ -484,3 +484,42 @@ test("ケア：走る日はいつも走る前の準備、休養日は柔軟、�
     assert.match(stretchSpeech(st).lines.at(-1)!, /セット/);
   }
 });
+
+// ---- 補強（筋トレ）の予定 ----
+import { strengthFor, WEEKS } from "../src/plan/calendar.ts";
+import { findStrengthWorkoutId } from "../src/coros/workout.ts";
+
+test("補強：時期ごとの回数（基礎・強化は週2、30km走の週・軽めの週は1、テーパーは軽く1、回復・大会週は0）", () => {
+  const w = (mon: string) => strengthFor(WEEKS.find((x) => x.monday === mon)!);
+  assert.equal(w("2026-11-09"), null, "回復期");
+  assert.deepEqual(w("2026-11-16"), { days: [0, 3], sets: 2, light: false }, "基礎期");
+  assert.deepEqual(w("2027-01-04"), { days: [0, 3], sets: 3, light: false }, "強化期は3セット");
+  assert.deepEqual(w("2027-02-08")?.days, [0], "30km走の週は1回");
+  assert.deepEqual(w("2026-12-14"), { days: [0], sets: 1, light: true }, "台北前は軽く1回");
+  assert.equal(w("2026-12-21"), null, "台北後の回復週");
+  assert.deepEqual(w("2027-03-01"), { days: [0], sets: 1, light: true }, "テーパー");
+  assert.equal(w("2027-03-08"), null, "大会週");
+  // 補強は月・木だけ（水のポイント練習、金＝ロング走の前日、週末には置かない）
+  for (const d of buildBaseDays(A, acts, "2026-11-07", RACE_DATE, 1.0)) if (d.strength) assert.ok([0, 3].includes(weekday(d.date)), d.date);
+});
+
+test("補強：COROS の筋トレ記録で✓、痛み・疲れのときはお休み", () => {
+  const today = "2026-11-20"; // 金（11/16 月・11/19 木が補強の日）
+  const strengthAct: Activity = { labelId: "s1", sportType: 402, title: "Strength", date: "2026-11-16", distanceKm: 0, durationS: 900 };
+  const r = generateWithHistory(A, [...followPlan(today), strengthAct], { today, loadRatio: 1.0 });
+  assert.equal(r.past.find((d) => d.date === "2026-11-16")!.strength?.done, true);
+  assert.equal(r.past.find((d) => d.date === "2026-11-19")!.strength?.done, false);
+  const next = r.days.find((d) => d.strength)!;
+  assert.ok(!next.strength!.skipped);
+  const pain = generateWithHistory(A, followPlan(today), { today, loadRatio: 1.0, painSince: today });
+  assert.match(pain.days.find((d) => d.strength)!.strength!.skipped!, /痛み/);
+  const tired = generateWithHistory(A, followPlan(today), { today, loadRatio: 1.7 });
+  assert.match(tired.days.find((d) => d.strength)!.strength!.skipped!, /疲れ/);
+});
+
+test("補強：COROS のワークアウト一覧から「Sub4 補強」を探す（テキストでも JSON でも）", () => {
+  const text = "Workout Library (2 workouts)\n========\n\n1. Upper body\n   Workout ID: 111 | Sport: Strength\n\n2. Sub4 補強\n   Workout ID: 222 | Sport: Strength";
+  assert.deepEqual(findStrengthWorkoutId(text)?.id, "222");
+  assert.deepEqual(findStrengthWorkoutId({ workouts: [{ workoutId: 9, name: "core" }, { workoutId: 10, name: "Sub4補強" }] })?.id, "10");
+  assert.equal(findStrengthWorkoutId("1. Upper body\n Workout ID: 111"), null);
+});

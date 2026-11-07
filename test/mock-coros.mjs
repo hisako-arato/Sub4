@@ -17,7 +17,7 @@ const TOOLS = [
   "queryUserInfo", "queryDevices", "queryFitnessAssessmentOverview", "querySportRecords",
   "getActivityDetail", "queryActivityLapData", "queryDailyHealthData", "querySleepOverview",
   "querySleepHrv", "queryRestingHeartRate", "queryRecoveryStatus", "queryTrainingLoadAssessment",
-  "queryTrainingSchedule", "queryTrainingPlanLibrary", "createTrainingPlan", "createScheduledWorkout",
+  "queryTrainingSchedule", "queryTrainingPlanLibrary", "createTrainingPlan", "createScheduledWorkout", "queryWorkoutLibrary", "scheduleWorkout",
 ].map((name) => ({ name, description: `mock ${name}`, inputSchema: { type: "object" } }));
 
 function toolResult(name, args) {
@@ -41,6 +41,13 @@ function toolResult(name, args) {
   }
   if (name === "queryUserInfo") {
     return "User Profile Information\n========================\n\nHeight: 170.0 cm\nWeight: 62.0 kg\nBirthday: 1990-01-01 (Age: 36)\nGender: Male";
+  }
+  if (name === "queryWorkoutLibrary") {
+    return "Workout Library (2 workouts)\n========================\n\n1. Upper body\n   Workout ID: 111 | Sport: Strength\n\n2. Sub4 補強\n   Workout ID: 222 | Sport: Strength";
+  }
+  if (name === "scheduleWorkout") {
+    if (args.workoutId !== "222" || !/^\d{8}$/.test(args.date)) throw new Error("invalid schedule");
+    return `Workout scheduled on ${args.date}\nidInPlan: 9`;
   }
   if (name === "queryActivityLapData") {
     // 公式ドキュメントの JSON 形式（単位は m・ミリ秒と仮定）。25km から失速する大会

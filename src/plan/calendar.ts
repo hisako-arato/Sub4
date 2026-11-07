@@ -119,3 +119,17 @@ export function seasonTimeline(): { label: string; phase: Phase; from: string; t
   }
   return out;
 }
+
+/** 補強（筋トレ）の予定：曜日（0=月）・セット数・軽めか。2026-11-07 ユーザーと合意した量 */
+export interface StrengthSpec {
+  days: number[];
+  sets: number;
+  light: boolean;
+}
+export function strengthFor(spec: WeekSpec): StrengthSpec | null {
+  if (spec.phase === "recovery" || spec.phase === "race") return null; // 大会後の回復週・大会週はなし
+  if (spec.key.kind === "tuneup" || spec.phase === "taper") return { days: [0], sets: 1, light: true };
+  const thirty = spec.key.kind === "long" && spec.key.km >= 30;
+  if (spec.down || thirty) return { days: [0], sets: 2, light: false }; // 軽めの週・30km走の週は1回
+  return { days: [0, 3], sets: spec.phase === "build" ? 3 : 2, light: false }; // 月（ジョグのあと）と木
+}

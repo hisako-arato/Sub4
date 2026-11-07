@@ -12,7 +12,7 @@ import { generateWithHistory } from "./plan/generate.ts";
 import { loadLogs, loadPainSince, loadSettings, saveSettings, setChoice, setPain } from "./daylog.ts";
 import { addDays, daysBetween, mondayOf, RACE_DATE, seasonTimeline, todayJst, weekSpecFor, PHASE_JA } from "./plan/calendar.ts";
 import { fmtPace, fmtTime, predictTime } from "./plan/vdot.ts";
-import { loadPushed, pushWorkout } from "./coros/workout.ts";
+import { loadPushed, loadPushedStrength, pushStrength, pushWorkout } from "./coros/workout.ts";
 import { computeVolume } from "./plan/volume.ts";
 import { coachSpeech, stretchSpeech } from "./coach/speech.ts";
 import { careFor, careLibrary, STRETCHES } from "./care/care.ts";
@@ -70,6 +70,20 @@ async function route(req: Request, env: Env): Promise<Response> {
     await setChoice(env, body.date, Number(body.choice));
     return json({ ok: true });
   }
+  // 補強（筋トレ）を時計の予定へ：COROS アプリで作った「Sub4 補強」を日付に置く
+  if (p === "/api/push-strength" && req.method === "POST") {
+    const body = (await req.json().catch(() => ({}))) as { date?: string };
+    const { days } = await computePlan(env);
+    const day = days.find((d) => d.date === body.date);
+    if (!day?.strength || day.strength.skipped) return json({ error: "no_strength", message: "この日は補強の予定がありません" }, 400);
+    try {
+      return json({ ok: true, ...(await pushStrength(env, day.date)) });
+    } catch (e) {
+      if (e instanceof AuthRequiredError) throw e;
+      return json({ error: "push_failed", message: String(e instanceof Error ? e.message : e) }, 502);
+    }
+  }
+
   // 痛み（COROS からは分からないので、安全のためこれだけ受け付ける）
   if (p === "/api/pain" && req.method === "POST") {
     const body = (await req.json().catch(() => ({}))) as { active?: boolean };
@@ -136,11 +150,12 @@ async function computePlan(env: Env) {
 }
 
 async function buildPlanResponse(env: Env) {
-  const [{ today, snapshot, ability, loadRatio, days, past, alerts, modes, settings, activities }, pushed, conn, laps] = await Promise.all([
+  const [{ today, snapshot, ability, loadRatio, days, past, alerts, modes, settings, activities }, pushed, conn, laps, pushedStrength] = await Promise.all([
     computePlan(env),
     loadPushed(env),
     connectionStatus(env),
     loadLaps(env, addDays(todayJst(), -150)),
+    loadPushedStrength(env),
   ]);
   const insights = computeInsights({
     today, activities, laps, fitness: snapshot?.fitness ?? null, loadRatio,
@@ -211,7 +226,11 @@ async function buildPlanResponse(env: Env) {
       },
       history: ability.history,
     },
-    days: days.map((d) => ({ ...d, pushed: pushed[d.date] ? { title: pushed[d.date].title, at: pushed[d.date].at } : null })),
+    days: days.map((d) => ({
+      ...d,
+      pushed: pushed[d.date] ? { title: pushed[d.date].title, at: pushed[d.date].at } : null,
+      strengthPushed: !!pushedStrength[d.date],
+    })),
     past: past.filter((d) => d.date >= addDays(mondayOf(today), -7)),
     volume,
     coach,
@@ -220,6 +239,16 @@ async function buildPlanResponse(env: Env) {
       before: carePlan.before.map((id) => ({ ...STRETCHES[id], speech: stretchSpeech(STRETCHES[id]) })),
       after: carePlan.after.map((id) => ({ ...STRETCHES[id], speech: stretchSpeech(STRETCHES[id]) })),
     },
+    // 今日の補強（その日のセット数で）
+    strength: d0?.strength && !d0.strength.skipped
+      ? {
+          ...d0.strength,
+          items: d0.strength.items.map((id) => {
+            const st = { ...STRETCHES[id as keyof typeof STRETCHES], sets: d0.strength!.sets };
+            return { ...st, speech: stretchSpeech(st) };
+          }),
+        }
+      : null,
     // 「すべて」：いつでも見られる全種目（カテゴリごと）
     library: careLibrary().map((g) => ({ ...g, items: g.items.map((id) => ({ ...STRETCHES[id], speech: stretchSpeech(STRETCHES[id]) })) })),
     nutrition,

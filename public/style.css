@@ -349,3 +349,13 @@ ul.calls { list-style: none; padding: 0; font-size: 13px; }
   #tab-care .sub { margin-top: 2px; }
   .selfcare { display: none; }
 }
+/* ---- 補強 ---- */
+.cal-cell { position: relative; }
+.cal-cell .str { position: absolute; top: 1px; right: 2px; font-size: 9px; line-height: 1; }
+.cal-cell .str.done { filter: drop-shadow(0 0 0 var(--ok)); }
+.cal-cell .str.done::after { content: "✓"; color: var(--ok); font-size: 9px; margin-left: 1px; }
+.cal-cell .str.off { opacity: .35; filter: grayscale(1); }
+.cs-str { display: block; width: 100%; text-align: left; background: var(--bg); color: var(--text); border: 0; border-radius: 8px; padding: 3px 6px; font-size: 12px; margin: 2px 0 4px; }
+.cs-str.done { color: var(--ok); font-weight: 700; }
+.sub-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.sheet-str { margin-top: 10px; padding: 8px 10px; border-radius: 10px; background: var(--bg); }

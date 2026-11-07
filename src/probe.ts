@@ -114,6 +114,8 @@ export async function runProbe(env: Env) {
   // 予定・プラン（読み取りのみ）
   await call("queryTrainingSchedule", { startDate: jstDate(0), endDate: jstDate(13) });
   await call("queryTrainingPlanLibrary", { statusList: [0, 1] });
+  // 補強を時計に送るため：筋トレのワークアウト一覧（「Sub4 補強」を探す）
+  await call("queryWorkoutLibrary", { sportType: 4 });
 
   return {
     ran_at: new Date(started).toISOString(),

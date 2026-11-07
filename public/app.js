@@ -188,7 +188,9 @@ function renderToday(plan) {
   const btns = `<div class="cs-btns">${s ? pushButton(day) : ""}${
     plan.pain ? "" : `<button class="small ghost pain-btn" data-active="1" aria-label="痛みがある" title="痛みがあるときに押す">🩹</button>`
   }</div><p class="msg" id="push-msg"></p>`;
-  $("today").innerHTML = head + body + btns;
+  const sd = day.strength;
+  const str = sd && !sd.skipped ? `<button class="cs-str${sd.done ? " done" : ""}" data-goto="care">💪 補強 ${sd.sets}セット${sd.done ? " ✓" : ""}</button>` : "";
+  $("today").innerHTML = head + body + str + btns;
 }
 
 /** 今週：距離と曜日ごとの ✓ ✗ ○ */
@@ -221,7 +223,8 @@ function renderWeek(plan) {
   $("week").innerHTML = `<div class="cs-head">今週</div>
     <div class="cs-big">${done}<small> / ${total}km</small></div>
     <div class="bar"><i style="width:${ratio}%"></i></div>
-    <div class="wds">${cells.join("")}</div>`;
+    <div class="wds">${cells.join("")}</div>
+    ${v?.strength?.planned ? `<div class="cs-sub">💪 補強 ${v.strength.done}/${v.strength.planned}回</div>` : ""}`;
 }
 
 /** 大会までの流れ（期分けの帯といまの位置） */
@@ -299,6 +302,11 @@ function renderCare(plan) {
   if (c.caution) html += `<div class="alert warn">${esc(c.caution)}</div>`;
   if (c.before.length) html += `<p class="sub">走る前</p><ul class="rows">${rows(c.before)}</ul>`;
   if (c.after.length) html += `<p class="sub">${plan.days[0]?.main ? "走ったあと" : "今日のストレッチ"}</p><ul class="rows">${rows(c.after)}</ul>`;
+  const sp = plan.strength;
+  if (sp) {
+    html += `<div class="sub-row"><p class="sub">💪 今日の補強（${sp.sets}セット）${sp.done ? ' <span class="lv lv-ok">✓ COROS に記録あり</span>' : ""}</p>
+      <button class="small ghost strength-btn">▶ まとめてやる</button></div><ul class="rows">${rows(sp.items)}</ul>`;
+  }
   html += `<p class="sub">セルフケア</p><p class="selfcare">${c.selfCare.map(esc).join("／")}</p>`;
   $("care-list").innerHTML = html;
 }
@@ -355,9 +363,11 @@ function renderCalendar(plan) {
       }
       const isToday = date === today;
       const hol = day?.holiday ? " hol" : "";
+      const sd = day?.strength;
+      const st = sd ? `<b class="str ${sd.done ? "done" : sd.skipped || past ? "off" : ""}">💪</b>` : "";
       cells.push(
         `<button class="cal-cell${isToday ? " is-today" : ""}${past ? " past" : ""}${hol}" ${day ? `data-sheet="day" data-date="${date}"` : "disabled"}>
-          <small>${Number(date.slice(8, 10))}</small><i class="${cls}">${mark || "·"}</i></button>`,
+          <small>${Number(date.slice(8, 10))}</small><i class="${cls}">${mark || "·"}</i>${st}</button>`,
       );
     }
     const total = w < 1 ? actual : w === 1 ? actual + planned : planned;
@@ -436,6 +446,15 @@ function renderSheet() {
     }
     html += actualLine(day);
     if (!isPast && kind !== "log" && day.main) html += `<div class="actions">${pushButton(day)}${day.pushed ? `<span class="pushed">⌚ 送信済み：${esc(day.pushed.title)}</span>` : ""}</div><p class="msg" id="sheet-push-msg"></p>`;
+    const sd = day.strength;
+    if (sd) {
+      const names = sd.items.map((id) => findExercise(id)?.name ?? id).join("・");
+      html += `<div class="sheet-str"><b>💪 補強 ${sd.sets}セット${sd.light ? "（軽め）" : ""}</b>
+        ${sd.done ? '<span class="lv lv-ok">✓ COROS に記録あり</span>' : sd.skipped ? `<span class="lv lv-rest">${esc(sd.skipped)}</span>` : ""}
+        <div class="hint">${esc(names)}</div>
+        ${!isPast && !sd.done && !sd.skipped ? `<div class="actions"><button class="small ghost push-strength-btn" data-date="${day.date}">${day.strengthPushed ? "⌚ 補強を送り直す" : "⌚ 補強を時計に送る"}</button>${day.strengthPushed ? '<span class="pushed">⌚ 送信済み</span>' : ""}</div><p class="msg" id="str-msg"></p>` : ""}
+      </div>`;
+    }
     if (isPast && !day.actual.length && day.result?.state === "auto_skipped") html += `<p class="hint">COROS に走った記録がないので「走らなかった」として計画を組み直しています。走っていたら COROS で同期してください。</p>`;
   } else if (kind === "insights" || kind === "insight") {
     const list = (lastPlan.insights ?? []).filter((i) => kind === "insights" || i.id === key);
@@ -558,6 +577,18 @@ document.addEventListener("click", async (e) => {
     }
     return;
   }
+  const ps = e.target.closest(".push-strength-btn");
+  if (ps) {
+    ps.disabled = true;
+    $("str-msg").textContent = "送信中…";
+    const { status, body } = await api("/api/push-strength", { method: "POST", body: JSON.stringify({ date: ps.dataset.date }) });
+    ps.disabled = false;
+    if (status === 200) {
+      await loadPlan(false);
+      if ($("str-msg")) $("str-msg").textContent = `「${body.name}」を時計の予定に登録しました。COROS アプリで同期すると時計に入ります`;
+    } else $("str-msg").textContent = `送れませんでした：${body?.message || status}`;
+    return;
+  }
   // ストレッチの実演（コーチが動いて見せる）
   const demoBtn = e.target.closest(".demo-btn");
   if (demoBtn) {
@@ -576,6 +607,15 @@ document.addEventListener("click", async (e) => {
   const allBtn = e.target.closest(".all-session-btn");
   if (allBtn) {
     startCareSession((lastPlan?.library ?? []).find((g) => g.category === allBtn.dataset.cat)?.items ?? []);
+    return;
+  }
+  if (e.target.closest(".strength-btn")) {
+    startCareSession(lastPlan?.strength?.items ?? []);
+    return;
+  }
+  const go = e.target.closest("[data-goto]");
+  if (go) {
+    setTab(go.dataset.goto);
     return;
   }
   if (e.target.closest(".session-btn")) {
@@ -701,7 +741,7 @@ refresh();
 
 // ---- ケアの実演（コーチがストレッチを動いて見せ、時間を数える） ----
 function findExercise(id) {
-  const all = [...(lastPlan?.care?.before ?? []), ...(lastPlan?.care?.after ?? []), ...(lastPlan?.library ?? []).flatMap((g) => g.items)];
+  const all = [...(lastPlan?.strength?.items ?? []), ...(lastPlan?.care?.before ?? []), ...(lastPlan?.care?.after ?? []), ...(lastPlan?.library ?? []).flatMap((g) => g.items)];
   return all.find((x) => x.id === id);
 }
 const careKey = (d) => `sub4-care-${d}`;

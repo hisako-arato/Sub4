@@ -7,7 +7,7 @@
 //  - 数日（5日以上）空いた後は、次の2回は強度を上げずに戻す
 // 体調：疲労→以降の負荷を下げる／痛み→強度を上げず休養・受診を促す／負荷比・回復状況も見る
 import type { Activity } from "../coros/parse.ts";
-import { isRun } from "../coros/parse.ts";
+import { isRun, isStrength } from "../coros/parse.ts";
 import type { Ability } from "./ability.ts";
 import { addDays, daysBetween, isWeekendOrHoliday, mondayOf, weekday } from "./calendar.ts";
 import {
@@ -89,6 +89,7 @@ export function adjustPlan(base: DayPlan[], a: Ability, activities: Activity[], 
 
   // 1. 記録・選択を反映し、過去（と今日）の結果を出す
   for (const day of base) {
+    if (day.strength) day.strength.done = activities.some((a) => a.date === day.date && isStrength(a));
     const log = logs[day.date] ?? null;
     day.log = log;
     day.choice = log?.choice ?? -1;
@@ -277,6 +278,13 @@ export function adjustPlan(base: DayPlan[], a: Ability, activities: Activity[], 
     if (t?.date === today && t.main?.hard && t.main.category !== "race" && opts.recoveryPercent != null && opts.recoveryPercent < LOW_RECOVERY) {
       set(t, easy(a, t.main, 8), `回復${opts.recoveryPercent}%じゃまだまだね。今日は軽めにしときなさい`);
     }
+  }
+
+  // 補強：痛み・疲れのときはお休み（できなかった補強は取り返さない）
+  for (const d of future) {
+    if (!d.strength || d.strength.done) continue;
+    if (pain) d.strength = { ...d.strength, skipped: "痛みがある間は補強もお休み" };
+    else if (fatigue) d.strength = { ...d.strength, skipped: "疲れがたまっているので補強はお休み" };
   }
 
   // 11. 任意ジョグは「余裕のある週」だけ
