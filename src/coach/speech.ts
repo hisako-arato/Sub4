@@ -19,6 +19,7 @@ export interface CoachContext {
   week: { done: number; planned: number };
   upcomingTuneup: { name: string; inDays: number } | null;
   care?: { title: string; before: Stretch[]; after: Stretch[] } | null;
+  insights?: { level: string; coach: string }[];
   name?: string;
 }
 
@@ -157,6 +158,11 @@ export function coachSpeech(ctx: CoachContext): Speech {
   // 計画を調整した理由（コーチのひと言）
   if (d?.notes.length) lines.push(d.notes[0]);
 
+  // データから分かったこと（気づき）。注意すべきものを優先し、日替わりで1つ
+  const ins = ctx.insights ?? [];
+  const pool = ins.filter((x) => x.level === "warn").length ? ins.filter((x) => x.level === "warn") : ins;
+  if (pool.length) lines.push(pick(seed + "i", pool).coach);
+
   // おすすめのストレッチ（動作の見本はまだないので、言葉で伝える）
   const c = ctx.care;
   if (c && c.after.length) {
@@ -184,7 +190,7 @@ export function coachSpeech(ctx: CoachContext): Speech {
       ]),
     );
   }
-  return { expression, lines: lines.slice(0, 6) };
+  return { expression, lines: lines.slice(0, 7) };
 }
 
 /** ストレッチのやり方を、コーチが順番に説明するセリフ */

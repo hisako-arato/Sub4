@@ -42,6 +42,10 @@ function toolResult(name, args) {
   if (name === "queryUserInfo") {
     return "User Profile Information\n========================\n\nHeight: 170.0 cm\nWeight: 62.0 kg\nBirthday: 1990-01-01 (Age: 36)\nGender: Male";
   }
+  if (name === "queryActivityLapData") {
+    // 公式ドキュメントの JSON 形式（単位は m・ミリ秒と仮定）。25km から失速する大会
+    return { laps: Array.from({ length: 42 }, (_, i) => ({ lapIndex: i + 1, distance: i === 41 ? 1200 : 1000, time: (i < 25 ? 360 : 420) * 1000, avgHr: i < 25 ? 155 : 147 })) };
+  }
   if (name === "queryRecoveryStatus") throw new Error("not supported on this device");
   if (name === "createScheduledWorkout" || name === "updateScheduledWorkout") {
     const c = args.course;

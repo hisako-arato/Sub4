@@ -121,3 +121,71 @@ export function parseUserInfo(text: unknown): { heightCm?: number; weightKg?: nu
     gender: text.match(/Gender:\s*(\w+)/i)?.[1],
   };
 }
+
+// ---- ラップ（queryActivityLapData） ----
+export interface Lap {
+  index: number;
+  distanceKm: number;
+  durationS: number;
+  avgHr?: number;
+}
+
+/**
+ * ラップを読み取る。公式ドキュメントでは JSON（lapIndex, distance, time, avgHr…）だが、
+ * 単位（m / km / cm、秒 / ミリ秒）が書かれていないため、活動全体の距離・時間との比で単位を決める。
+ * テキストで返ってきた場合も、行ごとの「Distance」「Time」「Avg HR」から読む。読めなければ空配列。
+ */
+export function parseLaps(data: unknown, totalKm: number, totalS: number): Lap[] {
+  type Raw = { distance?: number; time?: number; hr?: number };
+  let raws: Raw[] = [];
+  const pickNum = (o: Record<string, unknown>, keys: string[]) => {
+    for (const k of keys) {
+      const v = o[k];
+      if (typeof v === "number") return v;
+      if (typeof v === "string" && v.trim() !== "") {
+        const d = parseDuration(v);
+        if (/:/.test(v) && d !== undefined) return d;
+        const n = Number(v.replace(/[^\d.]/g, ""));
+        if (!Number.isNaN(n)) return n;
+      }
+    }
+    return undefined;
+  };
+  // JSON：ラップらしい配列を探す
+  const stack: unknown[] = [data];
+  while (stack.length && !raws.length) {
+    const v = stack.shift();
+    if (Array.isArray(v) && v.length && typeof v[0] === "object" && v[0] && ("lapIndex" in v[0] || "distance" in v[0])) {
+      raws = v.map((o) => ({
+        distance: pickNum(o, ["distance", "lapDistance", "dist"]),
+        time: pickNum(o, ["time", "duration", "lapTime", "totalTime"]),
+        hr: pickNum(o, ["avgHr", "avgHeartRate", "heartRate", "avgHR"]),
+      }));
+    } else if (Array.isArray(v)) stack.push(...v);
+    else if (v && typeof v === "object") stack.push(...Object.values(v));
+  }
+  // テキスト：ラップごとのブロック
+  if (!raws.length && typeof data === "string") {
+    for (const b of data.split(/\n(?=\s*(?:Lap\s*\d+|#?\d+[.:)]\s))/i)) {
+      const dist = b.match(/Distance:\s*([\d.,]+)\s*(km|m)?/i);
+      const time = b.match(/(?:Time|Duration):\s*([\d:.]+)/i);
+      if (!dist || !time) continue;
+      const km = Number(dist[1].replace(/,/g, "")) / (dist[2]?.toLowerCase() === "m" ? 1000 : 1);
+      raws.push({ distance: km, time: parseDuration(time[1].split(".")[0]), hr: num(b.match(/(?:Avg\.? ?HR|Avg(?:erage)? Heart Rate):\s*(\d+)/i)?.[1]) });
+    }
+  }
+  raws = raws.filter((r) => r.distance && r.distance > 0 && r.time && r.time > 0);
+  if (raws.length < 3) return [];
+  // 単位合わせ：合計が活動全体に近くなる 10 のべき乗を選ぶ
+  const fit = (sum: number, total: number) => {
+    let best = 1;
+    for (const k of [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1, 10, 100, 1000]) if (Math.abs(Math.log(sum * k / total)) < Math.abs(Math.log(sum * best / total))) best = k;
+    return best;
+  };
+  const dk = fit(raws.reduce((s, r) => s + r.distance!, 0), totalKm);
+  const tk = fit(raws.reduce((s, r) => s + r.time!, 0), totalS);
+  const laps = raws.map((r, i) => ({ index: i + 1, distanceKm: r.distance! * dk, durationS: r.time! * tk, avgHr: r.hr && r.hr > 40 && r.hr < 230 ? r.hr : undefined }));
+  // 合計が活動と大きくずれるなら信用しない
+  const sumKm = laps.reduce((s, l) => s + l.distanceKm, 0);
+  return Math.abs(sumKm / totalKm - 1) < 0.15 ? laps : [];
+}

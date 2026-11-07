@@ -4,8 +4,9 @@ import { McpClient } from "../mcp.ts";
 import { kvGet, kvSet } from "../store.ts";
 import { addDays, todayJst } from "../plan/calendar.ts";
 import {
+  parseLaps,
   parseFitness, parseRecovery, parseSportRecords, parseTrainingLoad, parseUserInfo,
-  type Activity, type FitnessOverview, type LoadDay,
+  type Activity, type FitnessOverview, type Lap, type LoadDay,
 } from "./parse.ts";
 
 export interface Snapshot {
@@ -69,6 +70,21 @@ export async function syncFromCoros(env: Env, opts: { days?: number } = {}): Pro
     );
   }
 
+  // 大会・ロング走（20km以上）のラップ。まだ取っていないものを1回の同期で4件まで
+  const have = new Set(
+    (await env.DB.prepare("SELECT label_id FROM laps WHERE date >= ?").bind(addDays(today, -days)).all<{ label_id: string }>()).results.map((r) => r.label_id),
+  );
+  const need = activities.filter((a) => a.distanceKm >= 20 && !have.has(a.labelId)).sort((x, y) => (x.date < y.date ? 1 : -1)).slice(0, 4);
+  for (const a of need) {
+    const raw = await text("queryActivityLapData", { labelId: a.labelId, sportType: a.sportType });
+    if (raw == null) continue;
+    const laps = parseLaps(raw, a.distanceKm, a.durationS);
+    await env.DB.prepare("INSERT OR REPLACE INTO laps (label_id, date, laps, raw, synced_at) VALUES (?, ?, ?, ?, ?)")
+      .bind(a.labelId, a.date, JSON.stringify(laps), (typeof raw === "string" ? raw : JSON.stringify(raw)).slice(0, 60000), now)
+      .run();
+    if (!laps.length) errors.push(`queryActivityLapData: ${a.date} のラップを読み取れませんでした`);
+  }
+
   const snapshot: Snapshot = {
     syncedAt: now,
     fitness: parseFitness(fitness),
@@ -104,4 +120,28 @@ export async function loadActivities(env: Env, sinceDate: string): Promise<Activ
     avgHr: r.avg_hr ?? undefined,
     location: r.location ?? undefined,
   }));
+}
+
+/** ラップを読み込む。保存時に読めなかったものは、保存しておいた元の応答から読み直す（読み取りを直したときに効く） */
+export async function loadLaps(env: Env, sinceDate: string): Promise<Record<string, Lap[]>> {
+  const rows = await env.DB.prepare(
+    `SELECT l.label_id, l.laps, l.raw, a.distance_km, a.duration_s FROM laps l JOIN activities a ON a.label_id = l.label_id WHERE l.date >= ?`,
+  )
+    .bind(sinceDate)
+    .all<{ label_id: string; laps: string; raw: string | null; distance_km: number; duration_s: number }>();
+  return Object.fromEntries(
+    rows.results.map((r) => {
+      let laps = JSON.parse(r.laps) as Lap[];
+      if (!laps.length && r.raw) {
+        let raw: unknown = r.raw;
+        try {
+          raw = JSON.parse(r.raw);
+        } catch {
+          /* テキストのまま */
+        }
+        laps = parseLaps(raw, r.distance_km, r.duration_s);
+      }
+      return [r.label_id, laps];
+    }),
+  );
 }

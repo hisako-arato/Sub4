@@ -259,25 +259,28 @@ test("平日にロング走は移さない", () => {
   }
 });
 
-test("痛み：2日は休養、その後も短いジョグだけで受診を促す", () => {
-  const logs = { "2027-01-12": { status: "skipped" as const, reason: "pain" as const } };
-  const r = generateWithHistory(A, followPlan(TODAY, (d) => d === "2027-01-12"), { today: TODAY, loadRatio: 1.0, logs });
+test("痛み（「痛みがある」ボタン）：2日は休養、その後も短いジョグだけで受診を促す。「治った」で解除", () => {
+  const r = generateWithHistory(A, followPlan(TODAY), { today: TODAY, loadRatio: 1.0, painSince: "2027-01-12" });
   assert.ok(r.modes.pain);
   assert.ok(r.alerts.some((x) => x.text.includes("受診")));
   for (const d of r.days.slice(0, 7)) {
     if (daysBetween("2027-01-12", d.date) <= 2) assert.equal(d.main, null, d.date);
     else if (d.main) assert.ok(!d.main.hard && d.main.distanceKm <= 5, d.date);
   }
-  // 「治った」を記録すると解除
-  const r2 = generateWithHistory(A, followPlan(TODAY, (d) => d === "2027-01-12"), { today: TODAY, loadRatio: 1.0, logs, painClearedAt: TODAY });
+  const r2 = generateWithHistory(A, followPlan(TODAY), { today: TODAY, loadRatio: 1.0, painSince: null });
   assert.ok(!r2.modes.pain);
+  // 1週間以上続くと、受診をより強くすすめる
+  const r3 = generateWithHistory(A, followPlan(TODAY), { today: TODAY, loadRatio: 1.0, painSince: "2027-01-03" });
+  assert.ok(r3.alerts.some((x) => x.text.includes("1週間以上")));
 });
 
-test("疲労：直近7日の高強度を下げる", () => {
-  const logs = { "2027-01-11": { status: "skipped" as const, reason: "fatigue" as const } };
-  const r = generateWithHistory(A, followPlan(TODAY, (d) => d === "2027-01-11"), { today: TODAY, loadRatio: 1.0, logs });
-  assert.ok(r.modes.fatigue);
-  for (const d of r.days.slice(0, 7)) if (d.main?.category === "speed" || d.main?.category === "pace") assert.ok(!d.main.hard, d.date);
+test("疲労は COROS の負荷比・回復状況だけで判断し、直近7日の高強度を下げる", () => {
+  for (const opts of [{ loadRatio: 1.6 }, { loadRatio: 1.0, recoveryPercent: 30 }]) {
+    const r = generateWithHistory(A, followPlan(TODAY), { today: TODAY, ...opts });
+    assert.ok(r.modes.fatigue, JSON.stringify(opts));
+    for (const d of r.days.slice(0, 7)) if (d.main?.category === "speed" || d.main?.category === "pace") assert.ok(!d.main.hard, d.date);
+  }
+  assert.ok(!generateWithHistory(A, followPlan(TODAY), { today: TODAY, loadRatio: 1.0, recoveryPercent: 90 }).modes.fatigue);
 });
 
 test("数日空いた後は、次の2回は強度を上げない", () => {
@@ -410,4 +413,38 @@ test("ケアのセリフ：今日のおすすめストレッチを伝え、種�
   assert.equal(calf.lines.length, STRETCHES.calf.steps.length + 2);
   assert.match(calf.lines.at(-1)!, /30秒キープ、反対側も/);
   assert.match(stretchSpeech(STRETCHES.legswing).lines.at(-1)!, /リズム/);
+});
+
+// ---- 気づき ----
+import { parseLaps } from "../src/coros/parse.ts";
+import { computeInsights } from "../src/insight/insights.ts";
+
+test("ラップ：JSON（m・ミリ秒）でもテキストでも、活動全体に合わせて単位をそろえる", () => {
+  const json = { laps: Array.from({ length: 42 }, (_, i) => ({ lapIndex: i + 1, distance: 1000, time: 360000 + i * 3000, avgHr: 140 + i })) };
+  const laps = parseLaps(json, 42.2, 42 * 360 + 3000 * 861 / 1000);
+  assert.equal(laps.length, 42);
+  assert.ok(Math.abs(laps[0].distanceKm - 1) < 1e-9);
+  assert.ok(Math.abs(laps[0].durationS - 360) < 1e-9);
+  const text = Array.from({ length: 5 }, (_, i) => `Lap ${i + 1}\n  Distance: 1.00 km | Time: 0:06:00 | Avg HR: 150 bpm`).join("\n");
+  const t = parseLaps(text, 5, 1800);
+  assert.equal(t.length, 5);
+  assert.equal(t[2].avgHr, 150);
+  assert.deepEqual(parseLaps("no laps here", 5, 1800), []);
+});
+
+test("気づき：持久力の差・後半の失速・速すぎるジョグを見つける", () => {
+  // 前半 6:00/km、25km から 7:00/km に落ちた大会（心拍は下がる）
+  const raceId = "900000000000000002";
+  const laps = Array.from({ length: 42 }, (_, i) => ({ index: i + 1, distanceKm: 1, durationS: i < 25 ? 360 : 420, avgHr: i < 25 ? 155 : 145 }));
+  const jogs = ["2026-10-20", "2026-10-22", "2026-10-27", "2026-10-29"].map((d) => run(d, 8, 320)); // 5:20/km の速いジョグ
+  const ins = computeInsights({
+    today: "2026-11-07", activities: [...acts, ...jogs], laps: { [raceId]: laps }, fitness, loadRatio: 1.36, loadComment: "Optimized", ability: A,
+  });
+  const by = Object.fromEntries(ins.map((i) => [i.id, i]));
+  assert.equal(by.endurance.level, "warn");
+  assert.match(by.fade.text, /25km 付近/);
+  assert.match(by.fade.text, /脚かエネルギー/);
+  assert.equal(by.easy.level, "warn");
+  for (const i of ins) assert.ok(i.coach && !/undefined|NaN/.test(i.text + i.value + i.coach), i.id);
+  assert.equal(ins[0].level, "warn", "注意すべき気づきが先頭");
 });

@@ -39,9 +39,14 @@
     </section>
 
     <main class="panels">
-      <section class="panel" id="tab-today">
+      <section class="panel" id="tab-coach">
         <div id="alerts"></div>
-        <div id="today"></div>
+        <div class="grid2">
+          <div class="card-s" id="today"></div>
+          <div class="card-s" id="week"></div>
+        </div>
+        <div class="card-s" id="season"></div>
+        <div class="card-s insights" id="insights"></div>
         <p class="msg" id="sync-msg"></p>
       </section>
 
@@ -70,13 +75,9 @@
           <button class="ghost small" id="disconnect" hidden>接続を解除</button>
         </div>
         <p class="msg" id="coros-msg"></p>
+        <p class="msg" id="sync-detail"></p>
 
-        <h3>体重</h3>
-        <form id="body-form" class="settings">
-          <label>体重 <input type="number" id="set-weight" min="30" max="150" step="0.1"> kg <button type="submit" class="small">保存</button></label>
-          <p class="hint" id="weight-hint"></p>
-          <span class="msg" id="body-msg"></span>
-        </form>
+        <p class="hint">走った記録・体重などのデータは COROS を参照するだけです。変えるときは COROS アプリで。</p>
 
         <h3>達成の判定</h3>
         <form id="settings-form" class="settings">
@@ -111,7 +112,7 @@
     </main>
 
     <nav class="tabbar">
-      <button data-tab="today" class="on"><span>🏃</span>今日</button>
+      <button data-tab="coach" class="on"><span>💬</span>コーチ</button>
       <button data-tab="plan"><span>📅</span>2週間</button>
       <button data-tab="care"><span>🧘</span>ケア</button>
       <button data-tab="log"><span>📈</span>記録</button>

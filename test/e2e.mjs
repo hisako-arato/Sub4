@@ -134,23 +134,17 @@ if (restDay) {
   assert.equal(res.status, 400);
 }
 
-// 4d. 日々の記録
-const yesterday = new Date(Date.parse(plan.today + "T00:00:00Z") - 86400000).toISOString().slice(0, 10);
-const futureDay = plan.days.find((d) => d.main && d.date > plan.today);
-res = await req("/api/day", { method: "POST", body: JSON.stringify({ date: futureDay.date, status: "off" }) });
-assert.equal(res.status, 200);
+// 4d. 記録は COROS の参照のみ（手入力の口はない）。痛みだけはボタンで受け付ける
+for (const path of ["/api/day", "/api/body"]) {
+  res = await req(path, { method: "POST", body: JSON.stringify({}) });
+  assert.equal(res.status, 404, `${path} は廃止`);
+}
+await req("/api/pain", { method: "POST", body: JSON.stringify({ active: true }) });
 let p3 = await (await req("/api/plan")).json();
-assert.equal(p3.days.find((d) => d.date === futureDay.date).main, null, "予定なしの日は休み");
-res = await req("/api/day", { method: "POST", body: JSON.stringify({ date: futureDay.date, status: "skipped" }) });
-assert.equal(res.status, 400, "未来の日に「走らなかった」は不可");
-res = await req("/api/day", { method: "POST", body: JSON.stringify({ date: yesterday, status: "skipped", reason: "pain" }) });
-assert.equal(res.status, 200);
+assert.ok(p3.pain && p3.alerts.some((a) => a.text.includes("受診")), "痛みで受診を促す");
+await req("/api/pain", { method: "POST", body: JSON.stringify({ active: false }) });
 p3 = await (await req("/api/plan")).json();
-assert.ok(p3.alerts.some((a) => a.text.includes("受診")), "痛みの記録で受診を促す");
-assert.equal(p3.past.find((d) => d.date === yesterday).result.state, "skipped");
-res = await req("/api/pain-clear", { method: "POST" });
-p3 = await (await req("/api/plan")).json();
-assert.ok(!p3.alerts.some((a) => a.text.includes("受診")), "治ったら解除");
+assert.ok(!p3.pain && !p3.alerts.some((a) => a.text.includes("受診")), "治ったら解除");
 res = await req("/api/settings", { method: "POST", body: JSON.stringify({ distPct: 85, paceTolS: 15 }) });
 assert.deepEqual(await res.json(), { distPct: 85, paceTolS: 15 });
 const withSubs = p3.days.find((d) => d.subs.length);
@@ -158,18 +152,13 @@ await req("/api/choice", { method: "POST", body: JSON.stringify({ date: withSubs
 p3 = await (await req("/api/plan")).json();
 assert.equal(p3.days.find((d) => d.date === withSubs.date).choice, 1, "気分の練習の選択を保存");
 
-// 4e. ケアと栄養（体重は COROS → 上書き → 空欄で COROS に戻る）
-let p5 = await (await req("/api/plan")).json();
-assert.equal(p5.nutrition.weightKg, 62);
-assert.equal(p5.nutrition.weightSource, "coros");
-assert.ok(p5.care.after.length + p5.care.selfCare.length > 0);
-await req("/api/body", { method: "POST", body: JSON.stringify({ weightKg: 60 }) });
-p5 = await (await req("/api/plan")).json();
-assert.equal(p5.nutrition.weightKg, 60);
-assert.equal(p5.nutrition.weightSource, "manual");
-await req("/api/body", { method: "POST", body: JSON.stringify({ weightKg: null }) });
-p5 = await (await req("/api/plan")).json();
-assert.equal(p5.nutrition.weightKg, 62);
+// 4e. 体重は COROS の値だけ。気づき（ラップから後半の失速）・大会までの流れ
+assert.equal(p3.nutrition.weightKg, 62);
+assert.equal(p3.nutrition.weightSource, "coros");
+const ids = p3.insights.map((i) => i.id);
+assert.ok(ids.includes("endurance") && ids.includes("fade"), ids.join(","));
+assert.match(p3.insights.find((i) => i.id === "fade").text, /25km 付近/);
+assert.ok(p3.season.segments.some((g) => g.label === "台北"));
 
 // 5. Cron（期限が近いのでトークン更新される: 偽COROSは expires_in=3600）
 const before = status.coros.obtained_at;

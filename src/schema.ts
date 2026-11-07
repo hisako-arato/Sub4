@@ -45,6 +45,16 @@ const MIGRATIONS: string[][] = [
       updated_at INTEGER NOT NULL
     )`,
   ],
+  // 4: ラップ（大会・ロング走の分析用）
+  [
+    `CREATE TABLE IF NOT EXISTS laps (
+      label_id  TEXT PRIMARY KEY,
+      date      TEXT NOT NULL,
+      laps      TEXT NOT NULL,
+      raw       TEXT,
+      synced_at INTEGER NOT NULL
+    )`,
+  ],
 ];
 
 let ready: Promise<void> | null = null;

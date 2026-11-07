@@ -58,7 +58,7 @@ export interface PlanOptions {
   recoveryPercent?: number | null;
   logs?: Record<string, DayLog>;
   settings?: AchievementSettings;
-  painClearedAt?: string | null;
+  painSince?: string | null; // 「痛みがある」を押した日（「治った」で消える）
   planStart?: string | null; // アプリを使い始めた日。これより前は「走らなかった」と判定しない
 }
 

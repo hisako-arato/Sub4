@@ -124,16 +124,11 @@ export function adjustPlan(base: DayPlan[], a: Ability, activities: Activity[], 
   };
 
   // 2. 体調モード
-  const reported = (reason: SkipReason) =>
-    Object.entries(logs)
-      .filter(([d, l]) => l.status === "skipped" && l.reason === reason && d <= today)
-      .map(([d]) => d)
-      .sort()
-      .at(-1);
-  const lastPain = reported("pain");
-  const pain = !!lastPain && daysBetween(lastPain, today) <= 7 && !(opts.painClearedAt && opts.painClearedAt >= lastPain);
-  const lastFatigue = reported("fatigue");
-  const fatigue = !pain && !!lastFatigue && daysBetween(lastFatigue, today) <= 5;
+  // 痛み：COROS からは分からないので、利用者の「痛みがある」ボタン（opts.painSince）だけで判断する
+  // 疲労：COROS の負荷比・回復状況から判断する（手入力はしない）
+  const lastPain = opts.painSince ?? null;
+  const pain = !!lastPain && lastPain <= today;
+  const fatigue = !pain && ((opts.loadRatio ?? 0) > DOWNGRADE_LOAD_LIMIT || (opts.recoveryPercent ?? 100) < LOW_RECOVERY);
   const ranDates = [...runs.map((r) => r.date), ...Object.entries(logs).filter(([, l]) => l.status === "ran").map(([d]) => d)]
     .filter((d) => d <= today)
     .sort();
@@ -141,11 +136,15 @@ export function adjustPlan(base: DayPlan[], a: Ability, activities: Activity[], 
   const comeback = !pain && !!lastRun && daysBetween(lastRun, todayDone ? addDays(today, 1) : today) >= COMEBACK_GAP_DAYS;
 
   if (pain) {
+    const days = daysBetween(lastPain!, today) + 1;
     alerts.push({
       level: "warn",
-      text: "痛みの記録があるので、強度を上げずに休養を優先しています。痛みが続く・強くなるときは無理をせず医療機関を受診してください。",
+      text:
+        days > 7
+          ? `痛みがある状態が${days}日続いています。強度を上げずに休養を優先しています。1週間以上続く痛みは、医療機関を受診してください。`
+          : "痛みがあるので、強度を上げずに休養を優先しています。痛みが続く・強くなるときは無理をせず医療機関を受診してください。",
     });
-  } else if (fatigue) alerts.push({ level: "info", text: "疲労の記録があるので、数日は負荷を下げています。" });
+  } else if (fatigue) alerts.push({ level: "info", text: "COROS の負荷比・回復状況から疲れがたまっていると判断し、数日は負荷を下げています。" });
   if (comeback) alerts.push({ level: "info", text: `${daysBetween(lastRun!, today)}日空いたので、強度を上げずに軽めから戻します。` });
 
   // 3. 「走る予定はない」日は休みにする（あとで組み直す）

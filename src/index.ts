@@ -5,11 +5,12 @@ import { AuthRequiredError } from "./mcp.ts";
 import { runProbe } from "./probe.ts";
 import { ensureSchema } from "./schema.ts";
 import { McpClient } from "./mcp.ts";
-import { loadActivities, loadPlanStart, loadSnapshot, syncFromCoros } from "./coros/sync.ts";
+import { loadActivities, loadLaps, loadPlanStart, loadSnapshot, syncFromCoros } from "./coros/sync.ts";
+import { computeInsights } from "./insight/insights.ts";
 import { computeAbility } from "./plan/ability.ts";
 import { generateWithHistory } from "./plan/generate.ts";
-import { clearPain, loadBody, loadLogs, loadPainClearedAt, loadSettings, saveBody, saveSettings, setChoice, setDayStatus } from "./daylog.ts";
-import { addDays, daysBetween, RACE_DATE, todayJst, weekSpecFor, PHASE_JA } from "./plan/calendar.ts";
+import { loadLogs, loadPainSince, loadSettings, saveSettings, setChoice, setPain } from "./daylog.ts";
+import { addDays, daysBetween, RACE_DATE, seasonTimeline, todayJst, weekSpecFor, PHASE_JA } from "./plan/calendar.ts";
 import { fmtPace, fmtTime, predictTime } from "./plan/vdot.ts";
 import { loadPushed, pushWorkout } from "./coros/workout.ts";
 import { computeVolume } from "./plan/volume.ts";
@@ -62,20 +63,17 @@ async function route(req: Request, env: Env): Promise<Response> {
 
   if (p === "/api/plan") return json(await buildPlanResponse(env));
 
-  // 日々の記録
-  if (p === "/api/day" && req.method === "POST") {
-    const err = await setDayStatus(env, await req.json().catch(() => ({})));
-    return err ? json({ error: "bad_request", message: err }, 400) : json({ ok: true });
-  }
+  // 気分の練習の選択（COROS にない情報）
   if (p === "/api/choice" && req.method === "POST") {
     const body = (await req.json().catch(() => ({}))) as { date?: string; choice?: number };
     if (!body.date || !/^\d{4}-\d{2}-\d{2}$/.test(body.date)) return json({ error: "bad_request" }, 400);
     await setChoice(env, body.date, Number(body.choice));
     return json({ ok: true });
   }
-  if (p === "/api/body" && req.method === "POST") return json(await saveBody(env, await req.json().catch(() => ({}))));
-  if (p === "/api/pain-clear" && req.method === "POST") {
-    await clearPain(env);
+  // 痛み（COROS からは分からないので、安全のためこれだけ受け付ける）
+  if (p === "/api/pain" && req.method === "POST") {
+    const body = (await req.json().catch(() => ({}))) as { active?: boolean };
+    await setPain(env, !!body.active);
     return json({ ok: true });
   }
   if (p === "/api/settings" && req.method === "POST") return json(await saveSettings(env, await req.json().catch(() => ({}))));
@@ -118,37 +116,41 @@ async function route(req: Request, env: Env): Promise<Response> {
 
 async function computePlan(env: Env) {
   const today = todayJst();
-  const [snapshot, activities, logs, settings, painClearedAt, planStart] = await Promise.all([
+  const [snapshot, activities, logs, settings, painSince, planStart] = await Promise.all([
     loadSnapshot(env),
     loadActivities(env, addDays(today, -150)),
     loadLogs(env, addDays(today, -60)),
     loadSettings(env),
-    loadPainClearedAt(env),
+    loadPainSince(env),
     loadPlanStart(env),
   ]);
   const ability = computeAbility(activities, snapshot?.fitness ?? null, today);
   const loadRatio = snapshot?.load?.[0]?.ratio ?? null;
   const { days, past, alerts, modes } = generateWithHistory(ability, activities, {
-    today, loadRatio, recoveryPercent: snapshot?.recovery?.percent ?? null, logs, settings, painClearedAt, planStart,
+    today, loadRatio, recoveryPercent: snapshot?.recovery?.percent ?? null, logs, settings, painSince, planStart,
   });
   return { today, snapshot, ability, loadRatio, days, past, alerts, modes, settings, activities };
 }
 
 async function buildPlanResponse(env: Env) {
-  const [{ today, snapshot, ability, loadRatio, days, past, alerts, modes, settings, activities }, pushed, conn, body] = await Promise.all([
+  const [{ today, snapshot, ability, loadRatio, days, past, alerts, modes, settings, activities }, pushed, conn, laps] = await Promise.all([
     computePlan(env),
     loadPushed(env),
     connectionStatus(env),
-    loadBody(env),
+    loadLaps(env, addDays(todayJst(), -150)),
   ]);
+  const insights = computeInsights({
+    today, activities, laps, fitness: snapshot?.fitness ?? null, loadRatio,
+    loadComment: snapshot?.load?.[0]?.comment ?? null, ability,
+  });
   // 今日のケアと栄養（選んだ気分の練習を優先）
   const d0 = days[0];
   const todaySession = d0 ? (d0.choice >= 0 && d0.subs[d0.choice]) || d0.main : null;
   const yesterdayRace = activities.some((r) => r.date === addDays(today, -1) && r.distanceKm >= 40);
   const carePlan = careFor(todaySession, { pain: modes.pain, raceDayAfter: yesterdayRace });
-  const corosWeight = snapshot?.user?.weightKg ?? null;
-  const weightKg = body.weightKg ?? corosWeight;
-  const nutrition = weightKg ? nutritionFor(today, todaySession, weightKg, body.weightKg ? "manual" : "coros") : null;
+  // 体重は COROS の値だけを使う（アプリでは入力しない）
+  const weightKg = snapshot?.user?.weightKg ?? null;
+  const nutrition = weightKg ? nutritionFor(today, todaySession, weightKg, "coros") : null;
   const volume = computeVolume(ability, activities, days, today);
   const stale = !snapshot?.syncedAt || Date.now() / 1000 - snapshot.syncedAt > 36 * 3600;
   const tuneup = days.find((d) => d.main?.category === "race" && !/静岡/.test(d.main.title));
@@ -163,6 +165,7 @@ async function buildPlanResponse(env: Env) {
     hourJst: new Date(Date.now() + 9 * 3600_000).getUTCHours(),
     week: { done: volume.week.done, planned: volume.week.planned },
     upcomingTuneup: tuneup ? { name: tuneup.main!.title.replace(/（.*$/, ""), inDays: daysBetween(today, tuneup.date) } : null,
+    insights,
     care: modes.pain ? null : { title: carePlan.title, before: carePlan.before.map((id) => STRETCHES[id]), after: carePlan.after.map((id) => STRETCHES[id]) },
   });
   const spec = weekSpecFor(today);
@@ -215,7 +218,9 @@ async function buildPlanResponse(env: Env) {
       after: carePlan.after.map((id) => ({ ...STRETCHES[id], speech: stretchSpeech(STRETCHES[id]) })),
     },
     nutrition,
-    body: { weightKg: body.weightKg, corosWeightKg: corosWeight },
+    pain: modes.pain,
+    insights,
+    season: { segments: seasonTimeline(), race: RACE_DATE },
     alerts,
     settings,
   };

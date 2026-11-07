@@ -103,7 +103,7 @@ function renderChoices(day) {
 
 function pushButton(day) {
   if (!day.main) return "";
-  return `<button class="small push-btn" data-date="${day.date}">${day.pushed ? "⌚ 送り直す" : "⌚ 時計に送る"}</button>`;
+  return `<button class="small push-btn" data-date="${day.date}">${day.pushed ? "⌚ 送り直す" : "⌚ 送る"}</button>`;
 }
 
 function actualLine(day) {
@@ -149,24 +149,6 @@ function resultChip(day, detail = false) {
   }
 }
 
-/** 記録ボタン（今日・過去） */
-function logButtons(day, isToday) {
-  if (day.actual.length) return `<p class="hint">COROS の活動から自動で判定しています。</p>`;
-  const st = day.log?.status;
-  const b = (status, label, extra = "") => `<button class="small ghost log-btn" data-date="${day.date}" data-status="${status}" ${extra}>${label}</button>`;
-  let html = `<div class="logs">`;
-  if (st) html += b("clear", "記録を取り消す");
-  else {
-    if (day.main) html += `<button class="small ghost skip-open" data-date="${day.date}">走らなかった</button>`;
-    if (day.main || isToday) html += b("ran", "走った（手動）");
-    if (isToday && day.main) html += b("off", "今日は走る予定なし");
-  }
-  html += `<div class="reasons" id="reasons-${day.date}" hidden>理由（任意）：${["schedule", "fatigue", "pain", ""]
-    .map((r) => `<button class="small ghost log-btn" data-date="${day.date}" data-status="skipped" data-reason="${r}">${r ? REASON[r] : "なし"}</button>`)
-    .join("")}</div></div>`;
-  return html;
-}
-
 // ---- 各タブ ----
 function renderTop(plan) {
   $("countdown").textContent = String(Math.max(plan.daysToRace, 0));
@@ -184,36 +166,100 @@ function renderTop(plan) {
 
 function renderAlerts(plan) {
   $("alerts").innerHTML = (plan.alerts ?? [])
-    .map((a) => `<div class="alert ${a.level}">${esc(a.text)}${a.text.includes("痛み") ? ` <button class="small ghost" id="pain-clear">痛みは治った</button>` : ""}</div>`)
+    .map((a) => `<div class="alert ${a.level}">${esc(a.text)}${a.text.includes("痛み") ? ` <button class="small ghost pain-btn" data-active="0">痛みは治った</button>` : ""}</div>`)
     .join("");
 }
 
 function renderToday(plan) {
   const day = plan.days[0];
   if (!day) {
-    $("today").innerHTML = "<p>計画の期間外です。</p>";
+    $("today").innerHTML = "<p class='muted'>計画の期間外です</p>";
     return;
   }
   const s = chosen(day);
-  let html = `<div class="t-head"><span>今日 ${mmdd(day.date)}（${day.weekday}）${day.holiday ? ` <span class="hol">${esc(day.holiday)}</span>` : ""}</span>${resultChip(day)}</div>`;
-  if (s) {
-    if (day.optional) html += `<p class="opt">任意：余裕があれば。走らなくても計画には影響しません</p>`;
-    html += sessionDetail(s) + renderChoices(day);
-  } else {
-    html += `<div class="sess"><div class="sess-head">${badge("rest")} <strong>${day.log?.status === "off" ? "今日は走る予定なし" : "今日は休養日"}</strong></div>
-      <p class="hint">休むのも練習のうち。ケアのタブに軽いストレッチがあります</p></div>`;
+  const head = `<div class="cs-head">今日 ${mmdd(day.date)}（${day.weekday}）${resultChip(day)}</div>`;
+  const body = s
+    ? `<button class="cs-main" data-sheet="day" data-date="${day.date}">${dot(s.category)}<b>${esc(s.title)}</b><span class="km">${s.distanceKm}km</span></button>
+       <div class="cs-sub">${esc(s.pace)}${day.optional ? "・任意" : ""}</div>`
+    : `<button class="cs-main" data-sheet="day" data-date="${day.date}">${dot("rest")}<b>休養日</b></button><div class="cs-sub">ケアで軽いストレッチを</div>`;
+  const btns = `<div class="cs-btns">${s ? pushButton(day) : ""}${
+    plan.pain ? "" : `<button class="small ghost pain-btn" data-active="1" aria-label="痛みがある" title="痛みがあるときに押す">🩹</button>`
+  }</div><p class="msg" id="push-msg"></p>`;
+  $("today").innerHTML = head + body + btns;
+}
+
+/** 今週：距離と曜日ごとの ✓ ✗ ○ */
+function renderWeek(plan) {
+  const v = plan.volume?.week;
+  const mon = (() => {
+    const d = new Date(plan.today + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+    return d;
+  })();
+  const all = [...(plan.past ?? []), ...plan.days];
+  const cells = [];
+  for (let i = 0; i < 7; i++) {
+    const dt = new Date(mon.getTime() + i * 86400000).toISOString().slice(0, 10);
+    const day = all.find((x) => x.date === dt);
+    const wd = "月火水木金土日"[i];
+    let mark = "·", cls = "none";
+    const ran = day?.actual?.length;
+    if (dt < plan.today) {
+      if (ran) (mark = "✓"), (cls = "done");
+      else if (day?.result?.state === "auto_skipped" || day?.result?.state === "skipped") (mark = "✗"), (cls = "miss");
+    } else if (dt === plan.today) {
+      if (ran) (mark = "✓"), (cls = "done");
+      else if (day && chosen(day)) (mark = "●"), (cls = `today cat-${chosen(day).category}`);
+    } else if (day && chosen(day)) (mark = "○"), (cls = `next cat-${chosen(day).category}`);
+    cells.push(`<span class="wd ${dt === plan.today ? "is-today" : ""}"><small>${wd}</small><i class="${cls}">${mark}</i></span>`);
   }
-  html += actualLine(day);
-  html += `<div class="actions">${pushButton(day)}<button class="small ghost" data-sheet="log" data-date="${day.date}">📝 記録</button>${
-    day.pushed ? `<span class="pushed">⌚ 送信済み</span>` : ""}</div><p class="msg" id="push-msg"></p>`;
-  $("today").innerHTML = html;
+  const done = v?.done ?? 0, total = Math.round(((v?.done ?? 0) + (v?.planned ?? 0)) * 10) / 10;
+  const ratio = total ? Math.min(100, (done / total) * 100) : 0;
+  $("week").innerHTML = `<div class="cs-head">今週</div>
+    <div class="cs-big">${done}<small> / ${total}km</small></div>
+    <div class="bar"><i style="width:${ratio}%"></i></div>
+    <div class="wds">${cells.join("")}</div>`;
+}
+
+/** 大会までの流れ（期分けの帯といまの位置） */
+function renderSeason(plan) {
+  const segs = plan.season?.segments ?? [];
+  if (!segs.length) return;
+  const t = (d) => new Date(d + "T00:00:00Z").getTime();
+  const start = t(segs[0].from), end = t(plan.season.race);
+  const span = end - start;
+  const now = Math.min(100, Math.max(0, ((t(plan.today) - start) / span) * 100));
+  const bars = segs
+    .map((g) => {
+      const w = ((Math.min(t(g.to), end) - t(g.from) + 86400000) / span) * 100;
+      const cur = plan.today >= g.from && plan.today <= g.to;
+      return `<span class="seg-${g.phase}${g.label === "台北" ? " taipei" : ""}${cur ? " cur" : ""}" style="width:${w}%">${w > 9 ? g.label : ""}</span>`;
+    })
+    .join("");
+  $("season").innerHTML = `<div class="cs-head"><span>大会までの流れ</span><span class="muted">静岡まで${plan.daysToRace}日</span></div>
+    <div class="timeline">${bars}<i class="now" style="left:${now}%"></i></div>
+    <div class="tl-foot"><span>${mmdd(segs[0].from)}</span><span>12/20 台北</span><span>3/14 静岡</span></div>`;
+}
+
+/** 気づき（上位2件。タップで詳しく、全部はシートで） */
+function renderInsights(plan) {
+  const ins = plan.insights ?? [];
+  if (!ins.length) {
+    $("insights").innerHTML = `<div class="cs-head">データからの気づき</div><p class="hint">同期すると、COROS のデータから気づいたことをここに出します</p>`;
+    return;
+  }
+  const mark = { warn: "!", good: "◎", info: "i" };
+  $("insights").innerHTML = `<div class="cs-head"><span>データからの気づき</span><button class="link small" data-sheet="insights">すべて見る（${ins.length}）</button></div>
+    ${ins
+      .slice(0, 2)
+      .map((i) => `<button class="ins ins-${i.level}" data-sheet="insight" data-id="${i.id}"><span class="ins-ic">${i.icon}</span><span class="ins-t"><b>${esc(i.title)}</b><small>${esc(i.value)}</small></span><span class="ins-lv">${mark[i.level]}</span></button>`)
+      .join("")}`;
 }
 
 function renderDays(plan) {
   const v = plan.volume?.week;
   $("week-sum").textContent = v ? `今週 ${Math.round((v.done + v.planned) * 10) / 10}km` : "";
   $("days").innerHTML = plan.days
-    .slice(1)
     .map((day) => {
       const s = chosen(day);
       const off = day.log?.status === "off";
@@ -221,7 +267,7 @@ function renderDays(plan) {
       if (!s) {
         return `<li><button class="rowbtn" data-sheet="day" data-date="${day.date}">${dateCell(day)}${dot("rest")}<span class="t muted">${off ? "走る予定なし" : "休養"}</span><span class="km">${marks}</span></button></li>`;
       }
-      return `<li><button class="rowbtn${day.optional ? " optional" : ""}" data-sheet="day" data-date="${day.date}">${dateCell(day)}${dot(s.category)}<span class="t">${day.optional ? "（任意）" : ""}${esc(s.title)}</span><span class="km">${s.distanceKm}km${marks}</span></button></li>`;
+      return `<li><button class="rowbtn${day.optional ? " optional" : ""}${day.date === plan.today ? " is-today" : ""}" data-sheet="day" data-date="${day.date}">${dateCell(day)}${dot(s.category)}<span class="t">${day.optional ? "（任意）" : ""}${esc(s.title)}</span><span class="km">${s.distanceKm}km${marks}</span></button></li>`;
     })
     .join("");
 }
@@ -323,11 +369,6 @@ function renderAbility(plan) {
 
 function renderSettings(plan) {
   if (document.activeElement?.closest?.("#tab-settings form")) return; // 入力中は書き換えない
-  $("set-weight").value = plan.body?.weightKg ?? "";
-  $("set-weight").placeholder = plan.body?.corosWeightKg ? String(plan.body.corosWeightKg) : "";
-  $("weight-hint").textContent = plan.body?.corosWeightKg
-    ? `空欄なら COROS の体重（${plan.body.corosWeightKg}kg）を使います`
-    : "COROS から体重を取れていません。入力してください";
   $("set-dist").value = plan.settings.distPct;
   $("set-pace").value = plan.settings.paceTolS;
 }
@@ -353,11 +394,12 @@ function renderSheet() {
     }
     html += actualLine(day);
     if (!isPast && kind !== "log" && day.main) html += `<div class="actions">${pushButton(day)}${day.pushed ? `<span class="pushed">⌚ 送信済み：${esc(day.pushed.title)}</span>` : ""}</div><p class="msg" id="sheet-push-msg"></p>`;
-    if (isPast || isToday) html += logButtons(day, isToday);
-    else if (day.main || day.log?.status === "off") {
-      const off = day.log?.status === "off";
-      html += `<div class="logs"><button class="small ghost log-btn" data-date="${day.date}" data-status="${off ? "clear" : "off"}">${off ? "予定なしを取り消す" : "この日は走る予定なし"}</button></div>`;
-    }
+    if (isPast && !day.actual.length && day.result?.state === "auto_skipped") html += `<p class="hint">COROS に走った記録がないので「走らなかった」として計画を組み直しています。走っていたら COROS で同期してください。</p>`;
+  } else if (kind === "insights" || kind === "insight") {
+    const list = (lastPlan.insights ?? []).filter((i) => kind === "insights" || i.id === key);
+    if (!list.length) return closeSheet();
+    html += `<h3>データからの気づき</h3><p class="hint">COROS の活動・心拍・ラップ・負荷を組み合わせて読み取ったことです</p>` +
+      list.map((i) => `<div class="ins-full ins-${i.level}"><b>${i.icon} ${esc(i.title)}</b><div class="ins-v">${esc(i.value)}</div><p>${esc(i.text)}</p></div>`).join("");
   } else if (kind === "stretch") {
     const st = [...(lastPlan.care?.before ?? []), ...(lastPlan.care?.after ?? [])].find((x) => x.id === key);
     if (!st) return closeSheet();
@@ -422,6 +464,9 @@ async function loadPlan(connected) {
   renderTop(body);
   renderAlerts(body);
   renderToday(body);
+  renderWeek(body);
+  renderSeason(body);
+  renderInsights(body);
   renderDays(body);
   renderCare(body);
   renderNutrition(body);
@@ -442,7 +487,8 @@ async function doSync() {
   const { status, body } = await api("/api/sync", { method: "POST" });
   $("sync").disabled = false;
   if (status === 200) {
-    $("sync-msg").textContent = body.errors?.length ? `一部取得できませんでした：${body.errors.join(" / ")}` : "";
+    $("sync-msg").textContent = "";
+    $("sync-detail").textContent = body.errors?.length ? `前回の同期で一部取得できませんでした：${body.errors.join(" / ")}` : "";
     await loadPlan(true);
   } else {
     $("sync-msg").textContent = `同期に失敗しました：${body?.message || body?.error || status}（「未同期」のまま表示しています）`;
@@ -486,31 +532,11 @@ document.addEventListener("click", async (e) => {
     openSheet(opener.dataset.sheet, opener.dataset.date ?? opener.dataset.id ?? null);
     return;
   }
-  const so = e.target.closest(".skip-open");
-  if (so) {
-    $(`reasons-${so.dataset.date}`).hidden = false;
-    return;
-  }
-  const lb = e.target.closest(".log-btn");
-  if (lb) {
-    const { date, status, reason } = lb.dataset;
-    let km = null;
-    if (status === "ran") {
-      const v = prompt("走った距離（km）。分からなければ空欄でOK", "");
-      if (v === null) return;
-      km = Number(v) || null;
-    }
-    lb.disabled = true;
-    const r = await api("/api/day", {
-      method: "POST",
-      body: JSON.stringify({ date, status: status === "clear" ? null : status, reason: reason || null, km }),
-    });
-    if (r.status !== 200) alert(r.body?.message || "記録できませんでした");
-    await loadPlan(false);
-    return;
-  }
-  if (e.target.id === "pain-clear") {
-    await api("/api/pain-clear", { method: "POST" });
+  const pain = e.target.closest(".pain-btn");
+  if (pain) {
+    const on = pain.dataset.active === "1";
+    if (on && !confirm("痛みがあることを記録しますか？\n強度を下げ、休養を優先した計画にします（「治った」で戻ります）")) return;
+    await api("/api/pain", { method: "POST", body: JSON.stringify({ active: on }) });
     await loadPlan(false);
     return;
   }
@@ -592,15 +618,6 @@ $("settings-form").addEventListener("submit", async (e) => {
     body: JSON.stringify({ distPct: Number($("set-dist").value), paceTolS: Number($("set-pace").value) }),
   });
   $("settings-msg").textContent = r.status === 200 ? "保存しました" : "保存できませんでした";
-  document.activeElement?.blur();
-  await loadPlan(false);
-});
-
-$("body-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const v = $("set-weight").value.trim();
-  const r = await api("/api/body", { method: "POST", body: JSON.stringify({ weightKg: v ? Number(v) : null }) });
-  $("body-msg").textContent = r.status === 200 ? "保存しました" : "保存できませんでした";
   document.activeElement?.blur();
   await loadPlan(false);
 });

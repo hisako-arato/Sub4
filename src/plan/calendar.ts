@@ -107,3 +107,15 @@ export function weekSpecFor(date: string): WeekSpec | null {
   const mon = mondayOf(date);
   return WEEKS.find((w) => w.monday === mon) ?? null;
 }
+
+/** 大会までの流れ（コーチ画面の帯）：同じ期・同じ説明の週をまとめる */
+export function seasonTimeline(): { label: string; phase: Phase; from: string; to: string }[] {
+  const out: { label: string; phase: Phase; from: string; to: string }[] = [];
+  for (const w of WEEKS) {
+    const label = w.key.kind === "tuneup" ? "台北" : w.label?.includes("台北後") ? "回復" : PHASE_JA[w.phase].replace("期", "").replace("大会週", "本番");
+    const last = out.at(-1);
+    if (last && last.label === label) last.to = addDays(w.monday, 6);
+    else out.push({ label, phase: w.phase, from: w.monday, to: addDays(w.monday, 6) });
+  }
+  return out;
+}
