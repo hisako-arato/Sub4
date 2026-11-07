@@ -260,7 +260,26 @@ function renderInsights(plan) {
 }
 
 function holdText(st) {
-  return st.kind === "dynamic" ? "各10回" : `${st.holdSec}秒${st.sides ? "×左右" : ""}`;
+  const lr = st.sides ? "・左右" : "";
+  if (st.kind === "reps") return `${st.reps}回×${st.sets ?? 1}セット${lr}`;
+  if (st.kind === "dynamic") return `${st.holdSec}秒${lr}`;
+  return `${st.holdSec}秒${st.sets > 1 ? `×${st.sets}セット` : ""}${lr}`;
+}
+
+// 「すべて」：カテゴリを選んで、全種目をいつでも見られる
+let careCat = "warmup";
+function renderCareAll(plan) {
+  const lib = plan.library ?? [];
+  if (!lib.length) return;
+  const g = lib.find((x) => x.category === careCat) ?? lib[0];
+  $("care-all").innerHTML = `
+    <div class="chips">${lib.map((x) => `<button class="chip ${x.category === g.category ? "on" : ""}" data-cat="${x.category}">${esc(x.label)}</button>`).join("")}</div>
+    <div class="panel-head"><span>${esc(g.label)}</span><button class="small all-session-btn" data-cat="${g.category}">▶ まとめてやる（${g.items.length}種目）</button></div>
+    <ul class="rows">${g.items
+      .map((st) => `<li><div class="rowbtn" data-sheet="stretch" data-id="${st.id}"><span class="t"><strong>${esc(st.name)}</strong> <small class="muted">${holdText(st)}</small></span>
+        <button class="small ghost demo-btn" data-id="${st.id}">▶ 見本</button></div></li>`)
+      .join("")}</ul>
+    ${plan.pain ? `<p class="hint warn-text">痛みがある間は、痛む場所を使う種目は控えてください</p>` : ""}`;
 }
 
 function renderCare(plan) {
@@ -424,7 +443,7 @@ function renderSheet() {
     html += `<h3>データからの気づき</h3><p class="hint">COROS の活動・心拍・ラップ・負荷を組み合わせて読み取ったことです</p>` +
       list.map((i) => `<div class="ins-full ins-${i.level}"><b>${i.icon} ${esc(i.title)}</b><div class="ins-v">${esc(i.value)}</div><p>${esc(i.text)}</p></div>`).join("");
   } else if (kind === "stretch") {
-    const st = [...(lastPlan.care?.before ?? []), ...(lastPlan.care?.after ?? [])].find((x) => x.id === key);
+    const st = findExercise(key);
     if (!st) return closeSheet();
     html += `<h3>${esc(st.name)} <small class="muted">${esc(st.target)}・${holdText(st)}</small></h3>
       <ol class="steps">${st.steps.map((x) => `<li>${esc(x)}</li>`).join("")}</ol>
@@ -492,6 +511,7 @@ async function loadPlan(connected) {
   renderInsights(body);
   renderCalendar(body);
   renderCare(body);
+  renderCareAll(body);
   renderNutrition(body);
   renderVolume(body);
   renderAbility(body);
@@ -542,9 +562,20 @@ document.addEventListener("click", async (e) => {
   const demoBtn = e.target.closest(".demo-btn");
   if (demoBtn) {
     e.stopPropagation();
-    const st = [...(lastPlan?.care?.before ?? []), ...(lastPlan?.care?.after ?? [])].find((x) => x.id === demoBtn.dataset.id);
+    const st = findExercise(demoBtn.dataset.id);
     closeSheet();
     if (st) startCareSession([st]);
+    return;
+  }
+  const chip = e.target.closest(".chip[data-cat]");
+  if (chip) {
+    careCat = chip.dataset.cat;
+    renderCareAll(lastPlan);
+    return;
+  }
+  const allBtn = e.target.closest(".all-session-btn");
+  if (allBtn) {
+    startCareSession((lastPlan?.library ?? []).find((g) => g.category === allBtn.dataset.cat)?.items ?? []);
     return;
   }
   if (e.target.closest(".session-btn")) {
@@ -669,6 +700,10 @@ if ([...params.keys()].length) history.replaceState(null, "", "/");
 refresh();
 
 // ---- ケアの実演（コーチがストレッチを動いて見せ、時間を数える） ----
+function findExercise(id) {
+  const all = [...(lastPlan?.care?.before ?? []), ...(lastPlan?.care?.after ?? []), ...(lastPlan?.library ?? []).flatMap((g) => g.items)];
+  return all.find((x) => x.id === id);
+}
 const careKey = (d) => `sub4-care-${d}`;
 function careDoneToday(d) {
   try {
@@ -678,22 +713,28 @@ function careDoneToday(d) {
   }
 }
 
-/** 実演の流れ：手順を話しながら構える → 保持（秒を数える）→ 反対側 → 次の種目 */
+/** 実演の流れ：手順を話しながら構える → 保持／回数（秒・回を数える）→ セット間の休憩 → 反対側 → 次の種目 */
 function buildSteps(list) {
   const steps = [];
   list.forEach((st, i) => {
     const sides = st.sides ? ["left", "right"] : ["left"];
-    const holdSec = st.kind === "dynamic" ? 14 : st.holdSec;
+    const sets = st.category === "strength" ? st.sets ?? 1 : 1;
+    const sec = st.kind === "reps" ? st.reps * st.holdSec : st.holdSec;
+    const mode = st.kind === "reps" ? "reps" : "sec";
     const lines = st.speech?.lines ?? [st.name];
     sides.forEach((side, k) => {
       const label = st.sides ? (side === "left" ? "左" : "右") : "";
       if (k === 0) {
         const intro = [i > 0 ? `次は${st.name}よ！` : lines[0], ...lines.slice(1, -1)];
-        intro.forEach((l, j) => steps.push({ st, side, label, phase: "prep", sec: Math.max(2.5, l.length * 0.12), line: l, first: j === 0 }));
-        steps.push({ st, side, label, phase: "hold", sec: holdSec, line: lines.at(-1) });
+        intro.forEach((l) => steps.push({ st, side, label, phase: "prep", sec: Math.max(2.5, l.length * 0.12), line: l }));
       } else {
         steps.push({ st, side, label, phase: "prep", sec: 2.5, line: "反対側！ 同じように構えて" });
-        steps.push({ st, side, label, phase: "hold", sec: holdSec, line: "そのままキープ。呼吸は止めないのよ" });
+      }
+      for (let n = 1; n <= sets; n++) {
+        const setLabel = sets > 1 ? `${n}/${sets}セット` : "";
+        const line = k === 0 && n === 1 ? lines.at(-1) : n > 1 ? `${n}セット目、いくわよ！` : "そのまま。呼吸は止めないのよ";
+        steps.push({ st, side, label, setLabel, phase: "hold", mode, sec, line });
+        if (n < sets) steps.push({ st, side, label, setLabel, phase: "rest", sec: 15, line: "15秒休憩。深呼吸して" });
       }
     });
   });
@@ -705,7 +746,8 @@ function startCareSession(list) {
   setTab("care");
   session = { steps: buildSteps(list), list, i: -1, left: 0, paused: false, timer: null, last: performance.now(), said10: false };
   document.querySelector(".shell").classList.add("demo");
-  show("care-list", false);
+  session.hidden = ["care-list", "care-all", "nutrition"].filter((id) => !$(id).hidden);
+  for (const id of session.hidden) show(id, false);
   show("care-session");
   nextStep();
   session.timer = setInterval(tickSession, 200);
@@ -717,7 +759,7 @@ function nextStep() {
   if (!step) return finishCareSession();
   session.left = step.sec;
   session.said10 = false;
-  coach.demo(step.st.id, step.side);
+  coach.demo(step.phase === "rest" ? null : step.st.id, step.side);
   coach.say({ expression: step.phase === "hold" ? "relaxed" : "happy", lines: [step.line] }, { restart: true });
   renderSession();
 }
@@ -743,7 +785,14 @@ function tickSession() {
 function updateCount() {
   const step = session?.steps[session.i];
   const el = document.querySelector("#care-session .cs-count");
-  if (step && el && step.phase === "hold") el.innerHTML = `${Math.max(0, Math.ceil(session.left))}<small>秒</small>`;
+  if (step && el && step.phase !== "prep") el.innerHTML = countHtml(step);
+}
+
+function countHtml(step) {
+  const left = Math.max(0, session.left);
+  if (step.phase === "rest") return `${Math.ceil(left)}<small>秒 休憩</small>`;
+  if (step.mode === "reps") return `あと${Math.max(1, Math.ceil(left / step.st.holdSec))}<small>回</small>`;
+  return `${Math.ceil(left)}<small>秒</small>`;
 }
 
 function renderSession() {
@@ -751,10 +800,9 @@ function renderSession() {
   if (!step) return;
   const idx = session.list.indexOf(step.st);
   const dots = session.list.map((_, k) => `<i class="${k < idx ? "done" : k === idx ? "cur" : ""}"></i>`).join("");
-  const sec = Math.max(0, Math.ceil(session.left));
   $("care-session").innerHTML = `
-    <div class="cs-name"><b>${esc(step.st.name)}</b>${step.label ? `<span class="side">${step.label}</span>` : ""}<span class="muted">${esc(step.st.target)}</span></div>
-    <div class="cs-count ${step.phase}">${step.phase === "hold" ? `${sec}<small>秒</small>` : "構えて"}</div>
+    <div class="cs-name"><b>${esc(step.st.name)}</b>${step.label ? `<span class="side">${step.label}</span>` : ""}${step.setLabel ? `<span class="side set">${step.setLabel}</span>` : ""}</div>
+    <div class="cs-count ${step.phase}">${step.phase === "prep" ? "構えて" : countHtml(step)}</div>
     <div class="cs-dots">${dots}</div>
     <div class="cs-ctrl">
       <button class="small ghost" id="ss-pause">${session.paused ? "▶ 再開" : "⏸ 一時停止"}</button>
@@ -774,11 +822,12 @@ function finishCareSession() {
 function stopCareSession(done) {
   if (!session) return;
   clearInterval(session.timer);
+  const restore = session.hidden ?? ["care-list"];
   session = null;
   coach?.demo(null);
   document.querySelector(".shell").classList.remove("demo");
   show("care-session", false);
-  show("care-list");
+  for (const id of restore) show(id);
   coach?.say({ expression: "happy", lines: [done ? "おつかれさま、ハルキ君！ 今日のケアは完了よ。えらいじゃない" : "今日はここまでね。続きはまた今度でいいわ"] }, { restart: true });
   if (lastPlan) renderCare(lastPlan);
 }

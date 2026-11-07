@@ -6,11 +6,12 @@ import { VRMLoaderPlugin, VRMUtils } from "./vendor/three-vrm.module.min.js";
 import { STRETCH_MOTION, stretchPose } from "./stretch-motion.js";
 
 const BONES = [
-  "spine", "chest", "neck", "head",
+  "hips", "spine", "chest", "neck", "head",
   "leftUpperArm", "leftLowerArm", "rightUpperArm", "rightLowerArm",
   "leftUpperLeg", "leftLowerLeg", "leftFoot", "rightUpperLeg", "rightLowerLeg", "rightFoot",
 ];
-const FEET = ["leftFoot", "rightFoot", "leftToes", "rightToes"];
+// 床に触れうる部位（立ち姿では足、床の種目では背中・ひじ・頭も）
+const FEET = ["leftFoot", "rightFoot", "leftToes", "rightToes", "leftHand", "rightHand", "leftLowerArm", "rightLowerArm", "head", "hips", "chest"];
 
 const EXPRESSIONS = ["happy", "angry", "sad", "relaxed", "surprised"];
 // 表情の強さ。普段（base）は目が開いたままの控えめな強さ、話し始め（peak）ははっきり。
@@ -42,6 +43,22 @@ export function createCoach({ canvas, bubble, text, more, url = "/vrm/coach.vrm"
   light.position.set(0.6, 1.5, 1.8);
   scene.add(light, new THREE.AmbientLight(0xffffff, 0.9));
 
+  // 足元の影（床がないと浮いて見えるので、やわらかい楕円の影で床を示す）
+  const shadowTex = (() => {
+    const c = document.createElement("canvas");
+    c.width = c.height = 128;
+    const g = c.getContext("2d");
+    const grd = g.createRadialGradient(64, 64, 4, 64, 64, 64);
+    grd.addColorStop(0, "rgba(0,0,0,0.35)");
+    grd.addColorStop(1, "rgba(0,0,0,0)");
+    g.fillStyle = grd;
+    g.fillRect(0, 0, 128, 128);
+    return new THREE.CanvasTexture(c);
+  })();
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false }));
+  shadow.rotation.x = -Math.PI / 2;
+  scene.add(shadow);
+
   let vrm = null;
   let lines = [];
   let idx = 0;
@@ -61,7 +78,7 @@ export function createCoach({ canvas, bubble, text, more, url = "/vrm/coach.vrm"
   // 視線：カメラを見つつ、ときどき少しそらす
   const gaze = new THREE.Object3D();
   let gazeOff = new THREE.Vector3(), gazeAt = 1.5;
-  let baseYaw = 0, yaw = 0, groundY = 0, full = 0;
+  let baseYaw = 0, yaw = 0, groundY = 0, full = 0, floorK = 0;
   const frames = { upper: null, full: null };
   const camPos = new THREE.Vector3(), camLook = new THREE.Vector3();
   const tmpQ = new THREE.Quaternion(), tmpE = new THREE.Euler(), tmpV = new THREE.Vector3();
@@ -107,6 +124,8 @@ export function createCoach({ canvas, bubble, text, more, url = "/vrm/coach.vrm"
         frames.upper = { pos: new THREE.Vector3(0, head.y - 0.1, 1.35), look: new THREE.Vector3(0, head.y - 0.16, 0) };
         // 全身：上に吹き出しが来るので、体は少し下寄せに
         frames.full = { pos: new THREE.Vector3(0, head.y * 0.66, head.y * 3.0), look: new THREE.Vector3(0, head.y * 0.62, 0) };
+        // 床の種目：低い位置を少し上から
+        frames.floor = { pos: new THREE.Vector3(0, head.y * 1.1, head.y * 4.4), look: new THREE.Vector3(0, head.y * 0.2, 0) };
         camPos.copy(frames.upper.pos);
         camLook.copy(frames.upper.look);
         resize();
@@ -169,9 +188,10 @@ export function createCoach({ canvas, bubble, text, more, url = "/vrm/coach.vrm"
     yaw += ((m ? (motion.side === "right" ? -m.yaw : m.yaw) : 0) - yaw) * Math.min(1, dt * 3);
     vrm.scene.rotation.y = baseYaw + yaw;
     full += ((m ? 1 : 0) - full) * Math.min(1, dt * 3);
+    floorK += ((m?.floor ? 1 : 0) - floorK) * Math.min(1, dt * 3);
     if (frames.upper) {
-      camPos.lerpVectors(frames.upper.pos, frames.full.pos, full);
-      camLook.lerpVectors(frames.upper.look, frames.full.look, full);
+      camPos.lerpVectors(frames.upper.pos, frames.full.pos, full).lerp(frames.floor.pos, floorK);
+      camLook.lerpVectors(frames.upper.look, frames.full.look, full).lerp(frames.floor.look, floorK);
       camera.position.copy(camPos);
       camera.lookAt(camLook);
     }
@@ -207,6 +227,9 @@ export function createCoach({ canvas, bubble, text, more, url = "/vrm/coach.vrm"
     vrm.update(dt);
     // 足を床につける（ひざを曲げた分だけ体を下げる）
     vrm.scene.position.y += (groundY - lowestFoot()) * Math.min(1, dt * 10);
+    // 影：床の種目では体に沿って長く
+    shadow.position.set(0, groundY + 0.002, 0);
+    shadow.scale.set(0.9 + 1.3 * floorK, 0.55 + 0.1 * floorK, 1);
     renderer.render(scene, camera);
   }
   requestAnimationFrame(tick);

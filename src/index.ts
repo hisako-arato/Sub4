@@ -15,7 +15,7 @@ import { fmtPace, fmtTime, predictTime } from "./plan/vdot.ts";
 import { loadPushed, pushWorkout } from "./coros/workout.ts";
 import { computeVolume } from "./plan/volume.ts";
 import { coachSpeech, stretchSpeech } from "./coach/speech.ts";
-import { careFor, STRETCHES } from "./care/care.ts";
+import { careFor, careLibrary, STRETCHES } from "./care/care.ts";
 import { nutritionFor } from "./care/nutrition.ts";
 
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
@@ -220,6 +220,8 @@ async function buildPlanResponse(env: Env) {
       before: carePlan.before.map((id) => ({ ...STRETCHES[id], speech: stretchSpeech(STRETCHES[id]) })),
       after: carePlan.after.map((id) => ({ ...STRETCHES[id], speech: stretchSpeech(STRETCHES[id]) })),
     },
+    // 「すべて」：いつでも見られる全種目（カテゴリごと）
+    library: careLibrary().map((g) => ({ ...g, items: g.items.map((id) => ({ ...STRETCHES[id], speech: stretchSpeech(STRETCHES[id]) })) })),
     nutrition,
     pain: modes.pain,
     insights,

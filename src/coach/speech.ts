@@ -198,9 +198,15 @@ export function stretchSpeech(st: Stretch, name = "ハルキ君"): Speech {
   const order = ["まず、", "次に、", "それから、", "最後に、"];
   const steps = st.steps.map((x, i) => `${i === st.steps.length - 1 && i > 0 ? "最後に、" : order[Math.min(i, 2)]}${x}`);
   const finish =
-    st.kind === "dynamic"
-      ? "反動は大きくしすぎないで、リズムよくね。走る前に体を温めるためのものよ"
-      : `そのまま${st.holdSec}秒キープ${st.sides ? "、反対側も同じように" : ""}。反動はつけないで、気持ちいいところで止めるのよ。痛いまで伸ばしたら承知しないんだから`;
+    st.kind === "reps"
+      ? `${st.reps}回×${st.sets ?? 1}セット${st.sides ? "、左右それぞれ" : ""}。速さより正しいフォームが大事よ。きつかったら回数を減らしていいんだから`
+      : st.kind === "dynamic"
+        ? st.category === "mobility"
+          ? "ゆっくり大きく動かすのがコツよ。関節が気持ちよく動く範囲でね"
+          : "反動は大きくしすぎないで、リズムよくね。走る前に体を温めるためのものよ"
+        : st.category === "strength"
+          ? `${st.holdSec}秒×${st.sets ?? 1}セット。お尻が上がったり下がったりしないように。苦しくても呼吸は止めないこと！`
+          : `そのまま${st.holdSec}秒キープ${st.sides ? "、反対側も同じように" : ""}。反動はつけないで、気持ちいいところで止めるのよ。痛いまで伸ばしたら承知しないんだから`;
   return {
     expression: "happy",
     lines: [`${st.name}ね、${name}。${st.target}に効くわよ`, ...steps, finish],

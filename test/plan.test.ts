@@ -468,3 +468,19 @@ test("ケアで出すストレッチは全部、アバターの動き（左右�
   assert.deepEqual(mirror(mirror(p)), p);
   assert.deepEqual(mirror({ leftUpperLeg: [0.1, 0.2, 0.3] }), { rightUpperLeg: [0.1, -0.2, -0.3] });
 });
+
+test("ケア：走る日はいつも走る前の準備、休養日は柔軟、すべての種目はカテゴリごとに見られる", async () => {
+  const { careLibrary } = await import("../src/care/care.ts");
+  const jogDay = season(1.0).find((d) => d.main?.category === "jog" && !d.optional)!;
+  assert.ok(careFor(jogDay.main, { pain: false }).before.length >= 2, "ジョグの日も走る前の準備");
+  const rest = careFor(null, { pain: false });
+  assert.ok(rest.after.some((id) => STRETCHES[id].category === "mobility"), "休養日は柔軟");
+  const lib = careLibrary();
+  assert.deepEqual(lib.map((g) => g.category), ["warmup", "stretch", "mobility", "strength"]);
+  assert.equal(lib.flatMap((g) => g.items).length, Object.keys(STRETCHES).length, "全種目がどこかのカテゴリに入る");
+  for (const id of lib.find((g) => g.category === "strength")!.items) {
+    const st = STRETCHES[id];
+    assert.ok(st.kind === "reps" ? st.reps! > 0 && st.sets! > 0 : st.holdSec > 0, id);
+    assert.match(stretchSpeech(st).lines.at(-1)!, /セット/);
+  }
+});

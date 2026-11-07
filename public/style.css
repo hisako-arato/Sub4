@@ -331,3 +331,21 @@ ul.calls { list-style: none; padding: 0; font-size: 13px; }
   .shell.demo { grid-template-rows: auto minmax(200px, 52dvh) 1fr auto; }
   .cs-count { font-size: 2rem; }
 }
+/* ---- ケア：すべて ---- */
+.chips { display: flex; gap: 6px; flex-wrap: wrap; flex: none; }
+.chip { background: var(--card); color: var(--muted); border: 1px solid var(--border); padding: 5px 10px; font-size: 12px; border-radius: 999px; }
+.chip.on { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 700; }
+#care-all { display: flex; flex-direction: column; gap: 6px; flex: 1; min-height: 0; }
+#care-all ul.rows { flex: 0 1 auto; }
+#care-all ul.rows li { flex: none; height: 40px; }
+.cs-name .side.set { background: var(--pace); }
+.cs-count.rest { color: var(--pace); }
+/* ケアの一覧：行を詰め、入りきらなければ一覧の中だけスクロール（隠れないように） */
+#tab-care ul.rows, #care-all ul.rows { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+#tab-care ul.rows li, #care-all ul.rows li { height: 36px; }
+#care-list { display: flex; flex-direction: column; gap: 4px; flex: 1; min-height: 0; }
+@media (max-height: 700px) {
+  #tab-care ul.rows li, #care-all ul.rows li { height: 32px; }
+  #tab-care .sub { margin-top: 2px; }
+  .selfcare { display: none; }
+}
