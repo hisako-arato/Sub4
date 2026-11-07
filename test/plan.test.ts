@@ -529,3 +529,16 @@ test("補強：実際の COROS の一覧（2026-11-07 取得）から ID と名�
     "Workout Library\n========================\nTotal workouts: 1\n\n1. Sub4 補強 [Strength] [custom]\n   Workout ID: 481584422829867707\n   Estimated Time: 5:00\n   Sets: 1\n   Overview: Sub4 補強\n   Created: 2026-11-07 08:56:19 | Updated: 2026-11-07 08:56:19\n\nUse queryWorkoutDetails before modifying a workout. Do not show Workout ID to the user.";
   assert.deepEqual(findStrengthWorkoutId(real), { id: "481584422829867707", name: "Sub4 補強" });
 });
+
+test("栄養は画面に出さず、コーチが大事な日に必ず話す（カーボローディング・大会当日・ロング走）", () => {
+  const days = season(1.0);
+  const at = (d: string) => days.find((x) => x.date === d) ?? { ...days[0], date: d, main: null, subs: [], notes: [], strength: null };
+  const say = (date: string, s: any) => coachSpeech({ ...ctxBase(at(date) as any), nutrition: nutritionFor(date, s, 62, "coros") }).lines.join("\n");
+  assert.match(say("2027-03-12", null), /カーボローディング.*茶碗/);
+  assert.match(say(RACE_DATE, days.find((d) => d.date === RACE_DATE)!.main), /3時間前.*125g/);
+  const long = days.find((d) => d.main?.title === "30km走")!;
+  assert.match(say(long.date, long.main), /ロング走の日は炭水化物多め/);
+  // 痛みのときは栄養の話より受診を優先
+  const pain = coachSpeech({ ...ctxBase(long), modes: { pain: true, fatigue: false, comeback: false }, nutrition: nutritionFor(long.date, long.main, 62, "coros") });
+  assert.ok(!pain.lines.some((l) => l.includes("炭水化物")));
+});

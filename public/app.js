@@ -311,22 +311,6 @@ function renderCare(plan) {
   $("care-list").innerHTML = html;
 }
 
-function renderNutrition(plan) {
-  const n = plan.nutrition;
-  if (!n) {
-    $("nutrition").innerHTML = `<p class="muted">体重が分かりません。COROS と同期するか、設定で体重を入力してください。</p>`;
-    return;
-  }
-  const rng = (a) => `${a[0]}〜${a[1]}`;
-  $("nutrition").innerHTML = `
-    <div class="panel-head"><span>${esc(n.dayType)}</span><span class="muted">体重 ${n.weightKg}kg</span></div>
-    <div class="tiles">
-      <div class="tile"><small>炭水化物</small><b>${rng(n.carbs.grams)}<small>g</small></b><small class="muted">ご飯 約${rng(n.carbs.riceBowls)}杯分</small></div>
-      <div class="tile"><small>たんぱく質</small><b>${rng(n.protein.grams)}<small>g</small></b><small class="muted">鶏むね 約${rng(n.protein.chickenG)}g分</small></div>
-    </div>
-    <ul class="menu compact">${n.tips.slice(0, 2).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
-    <button class="small ghost" data-sheet="food">食べ物の目安・注意</button>`;
-}
 
 /** 練習カレンダー：先週・今週・来週・再来週（過去は結果、これからは練習の種類） */
 function renderCalendar(plan) {
@@ -467,15 +451,6 @@ function renderSheet() {
     html += `<h3>${esc(st.name)} <small class="muted">${esc(st.target)}・${holdText(st)}</small></h3>
       <ol class="steps">${st.steps.map((x) => `<li>${esc(x)}</li>`).join("")}</ol>
       <button class="small demo-btn" data-id="${st.id}">▶ コーチの見本</button>`;
-  } else if (kind === "food") {
-    const n = lastPlan.nutrition;
-    if (!n) return closeSheet();
-    html += `<h3>${esc(n.dayType)} <small class="muted">体重 ${n.weightKg}kg${n.weightSource === "coros" ? "（COROS）" : ""}</small></h3>
-      <p>炭水化物 ${n.carbs.perKg[0]}〜${n.carbs.perKg[1]}g/kg・たんぱく質 ${n.protein.perKg[0]}〜${n.protein.perKg[1]}g/kg</p>
-      <ul class="menu">${n.tips.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
-      <p><strong>炭水化物</strong>：${n.foods.carbs.map(esc).join("／")}</p>
-      <p><strong>たんぱく質</strong>：${n.foods.protein.map(esc).join("／")}</p>
-      <p class="hint">一般的なスポーツ栄養の目安です（1日の合計）。医学的な判断ではありません。体調不良が続くときは医療機関に相談してください。</p>`;
   }
   $("sheet-body").innerHTML = html;
 }
@@ -531,7 +506,6 @@ async function loadPlan(connected) {
   renderCalendar(body);
   renderCare(body);
   renderCareAll(body);
-  renderNutrition(body);
   renderVolume(body);
   renderAbility(body);
   renderSettings(body);
@@ -786,7 +760,7 @@ function startCareSession(list) {
   setTab("care");
   session = { steps: buildSteps(list), list, i: -1, left: 0, paused: false, timer: null, last: performance.now(), said10: false };
   document.querySelector(".shell").classList.add("demo");
-  session.hidden = ["care-list", "care-all", "nutrition"].filter((id) => !$(id).hidden);
+  session.hidden = ["care-list", "care-all"].filter((id) => !$(id).hidden);
   for (const id of session.hidden) show(id, false);
   show("care-session");
   nextStep();

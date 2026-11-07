@@ -4,6 +4,7 @@
 import type { DayPlan, Session } from "../plan/generate.ts";
 import type { Phase } from "../plan/calendar.ts";
 import type { Stretch } from "../care/care.ts";
+import type { Nutrition } from "../care/nutrition.ts";
 
 export type Expression = "neutral" | "happy" | "angry" | "sad" | "relaxed" | "surprised";
 
@@ -18,6 +19,7 @@ export interface CoachContext {
   hourJst: number;
   week: { done: number; planned: number };
   upcomingTuneup: { name: string; inDays: number } | null;
+  nutrition?: Nutrition | null; // 栄養は画面に出さず、コーチのセリフで伝える
   care?: { title: string; before: Stretch[]; after: Stretch[] } | null;
   insights?: { level: string; coach: string }[];
   name?: string;
@@ -158,6 +160,32 @@ export function coachSpeech(ctx: CoachContext): Speech {
   // 計画を調整した理由（コーチのひと言）
   if (d?.notes.length) lines.push(d.notes[0]);
 
+  // 栄養（画面には出さない。大事な日は必ず、普段は数日に一度だけ話す）
+  const n = ctx.nutrition;
+  if (n && !ctx.modes.pain) {
+    const c = n.carbs, pr = n.protein;
+    const rng = (a: [number, number]) => `${a[0]}〜${a[1]}`;
+    if (n.dayType === "カーボローディング") {
+      lines.push(`カーボローディングよ！ 今日は炭水化物${rng(c.grams)}g、ご飯なら茶碗${rng(c.riceBowls)}杯分。脂っこいものと食べ慣れないものは控えること`);
+    } else if (n.dayType.startsWith("大会当日")) {
+      lines.push(`スタートの3時間前に炭水化物を${Math.round((n.weightKg * 2) / 5) * 5}gくらい。おにぎりとバナナで十分よ。走りながらは1時間にジェル1〜2個！`);
+    } else if (n.dayType === "大会前日") {
+      lines.push(`明日に備えて、今日は主食を多めに。ご飯なら茶碗${rng(c.riceBowls)}杯分が目安よ`);
+    } else if (n.dayType.startsWith("長時間")) {
+      lines.push(`ロング走の日は炭水化物多めよ。ご飯なら茶碗${rng(c.riceBowls)}杯分。走りながら1時間にジェル1〜2個も忘れないで`);
+    } else {
+      const say = pick(seed + "n", [
+        null,
+        null,
+        `走ったあと1時間以内に、たんぱく質を${Math.round((n.weightKg * 0.3) / 5) * 5}gくらい。牛乳とおにぎりでもいいのよ`,
+        `今日のたんぱく質は${rng(pr.grams)}gが目安。鶏むね肉なら${rng(pr.chickenG)}gくらいね`,
+        `ご飯は抜いちゃダメよ。今日は茶碗${rng(c.riceBowls)}杯分くらいが目安なんだから`,
+      ]);
+      if (say && !n.dayType.startsWith("休養")) lines.push(say);
+      else if (n.dayType.startsWith("休養") && pick(seed + "nr", [false, true])) lines.push("休みの日はご飯少なめでいいわ。たんぱく質は3食に分けてね");
+    }
+  }
+
   // 補強（筋トレ）の日
   const sd = d?.strength;
   if (sd && !ctx.modes.pain) {
@@ -198,7 +226,7 @@ export function coachSpeech(ctx: CoachContext): Speech {
       ]),
     );
   }
-  return { expression, lines: lines.slice(0, 7) };
+  return { expression, lines: lines.slice(0, 8) };
 }
 
 /** ストレッチのやり方を、コーチが順番に説明するセリフ */

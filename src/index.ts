@@ -184,6 +184,7 @@ async function buildPlanResponse(env: Env) {
     week: { done: volume.week.done, planned: volume.week.planned },
     upcomingTuneup: tuneup ? { name: tuneup.main!.title.replace(/（.*$/, ""), inDays: daysBetween(today, tuneup.date) } : null,
     insights,
+    nutrition,
     care: modes.pain ? null : { title: carePlan.title, before: carePlan.before.map((id) => STRETCHES[id]), after: carePlan.after.map((id) => STRETCHES[id]) },
   });
   const spec = weekSpecFor(today);
