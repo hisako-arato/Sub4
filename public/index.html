@@ -50,21 +50,20 @@
         <p class="msg" id="sync-msg"></p>
       </section>
 
-      <section class="panel" id="tab-plan" hidden>
-        <div class="panel-head"><span>2週間の練習</span><span class="muted" id="week-sum"></span></div>
-        <ul id="days" class="rows"></ul>
+      <section class="panel" id="tab-cal" hidden>
+        <div class="panel-head"><span>練習</span><span class="muted">過去2週・これから2週</span></div>
+        <div id="cal" class="cal"></div>
+        <p class="cal-legend"><span>◎達成</span><span>△一部</span><span>✕走らず</span><span>🏁大会</span><span>⚡🎯🛣️🌿 予定</span></p>
+      </section>
+
+      <section class="panel" id="tab-dist" hidden>
+        <div id="volume"></div>
       </section>
 
       <section class="panel" id="tab-care" hidden>
         <div class="seg" data-group="care"><button data-seg="care-list" class="on">ケア</button><button data-seg="nutrition">栄養</button></div>
         <div id="care-list"></div>
         <div id="nutrition" hidden></div>
-      </section>
-
-      <section class="panel" id="tab-log" hidden>
-        <div class="seg" data-group="log"><button data-seg="past-box" class="on">最近の記録</button><button data-seg="volume">走行距離</button></div>
-        <div id="past-box"><ul id="past" class="rows"></ul></div>
-        <div id="volume" hidden></div>
       </section>
 
       <section class="panel scroll" id="tab-settings" hidden>
@@ -113,9 +112,9 @@
 
     <nav class="tabbar">
       <button data-tab="coach" class="on"><span>💬</span>コーチ</button>
-      <button data-tab="plan"><span>📅</span>2週間</button>
+      <button data-tab="cal"><span>📅</span>練習</button>
+      <button data-tab="dist"><span>📈</span>距離</button>
       <button data-tab="care"><span>🧘</span>ケア</button>
-      <button data-tab="log"><span>📈</span>記録</button>
       <button data-tab="settings"><span>⚙️</span>設定</button>
     </nav>
 

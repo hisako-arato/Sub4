@@ -10,7 +10,7 @@ import { computeInsights } from "./insight/insights.ts";
 import { computeAbility } from "./plan/ability.ts";
 import { generateWithHistory } from "./plan/generate.ts";
 import { loadLogs, loadPainSince, loadSettings, saveSettings, setChoice, setPain } from "./daylog.ts";
-import { addDays, daysBetween, RACE_DATE, seasonTimeline, todayJst, weekSpecFor, PHASE_JA } from "./plan/calendar.ts";
+import { addDays, daysBetween, mondayOf, RACE_DATE, seasonTimeline, todayJst, weekSpecFor, PHASE_JA } from "./plan/calendar.ts";
 import { fmtPace, fmtTime, predictTime } from "./plan/vdot.ts";
 import { loadPushed, pushWorkout } from "./coros/workout.ts";
 import { computeVolume } from "./plan/volume.ts";
@@ -126,7 +126,10 @@ async function computePlan(env: Env) {
   ]);
   const ability = computeAbility(activities, snapshot?.fitness ?? null, today);
   const loadRatio = snapshot?.load?.[0]?.ratio ?? null;
+  // 練習カレンダー：先週の月曜〜再来週の日曜（過去2週・これから2週）
+  const calEnd = addDays(mondayOf(today), 27);
   const { days, past, alerts, modes } = generateWithHistory(ability, activities, {
+    days: daysBetween(today, calEnd) + 1,
     today, loadRatio, recoveryPercent: snapshot?.recovery?.percent ?? null, logs, settings, painSince, planStart,
   });
   return { today, snapshot, ability, loadRatio, days, past, alerts, modes, settings, activities };
@@ -209,7 +212,7 @@ async function buildPlanResponse(env: Env) {
       history: ability.history,
     },
     days: days.map((d) => ({ ...d, pushed: pushed[d.date] ? { title: pushed[d.date].title, at: pushed[d.date].at } : null })),
-    past: past.filter((d) => d.date >= addDays(today, -7)),
+    past: past.filter((d) => d.date >= addDays(mondayOf(today), -7)),
     volume,
     coach,
     care: {

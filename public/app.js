@@ -256,22 +256,6 @@ function renderInsights(plan) {
       .join("")}`;
 }
 
-function renderDays(plan) {
-  const v = plan.volume?.week;
-  $("week-sum").textContent = v ? `今週 ${Math.round((v.done + v.planned) * 10) / 10}km` : "";
-  $("days").innerHTML = plan.days
-    .map((day) => {
-      const s = chosen(day);
-      const off = day.log?.status === "off";
-      const marks = `${day.pushed ? "⌚" : ""}${day.notes.length ? "💬" : ""}`;
-      if (!s) {
-        return `<li><button class="rowbtn" data-sheet="day" data-date="${day.date}">${dateCell(day)}${dot("rest")}<span class="t muted">${off ? "走る予定なし" : "休養"}</span><span class="km">${marks}</span></button></li>`;
-      }
-      return `<li><button class="rowbtn${day.optional ? " optional" : ""}${day.date === plan.today ? " is-today" : ""}" data-sheet="day" data-date="${day.date}">${dateCell(day)}${dot(s.category)}<span class="t">${day.optional ? "（任意）" : ""}${esc(s.title)}</span><span class="km">${s.distanceKm}km${marks}</span></button></li>`;
-    })
-    .join("");
-}
-
 function holdText(st) {
   return st.kind === "dynamic" ? "各10回" : `${st.holdSec}秒${st.sides ? "×左右" : ""}`;
 }
@@ -311,18 +295,51 @@ function renderNutrition(plan) {
     <button class="small ghost" data-sheet="food">食べ物の目安・注意</button>`;
 }
 
-function renderPast(plan) {
-  const past = [...(plan.past ?? [])].reverse();
-  $("past").innerHTML = past.length
-    ? past
-        .map((day) => {
-          const p = day.planned ? (day.choice >= 0 && day.subs[day.choice]) || day.planned : null;
-          return `<li><button class="rowbtn" data-sheet="past" data-date="${day.date}">${dateCell(day)}${p ? dot(p.category) : dot("rest")}<span class="t">${
-            p ? esc(p.title) : `<span class="muted">予定なし</span>`
-          }</span><span class="res">${resultChip(day)}</span></button></li>`;
-        })
-        .join("")
-    : `<li class="muted">まだ記録がありません</li>`;
+/** 練習カレンダー：先週・今週・来週・再来週（過去は結果、これからは練習の種類） */
+function renderCalendar(plan) {
+  const t = (d) => new Date(d + "T00:00:00Z");
+  const iso = (ms) => new Date(ms).toISOString().slice(0, 10);
+  const today = plan.today;
+  const mon0 = t(today).getTime() - ((t(today).getUTCDay() + 6) % 7) * 86400000 - 7 * 86400000;
+  const all = [...(plan.past ?? []), ...plan.days];
+  const RES = { achieved: ["◎", "ok"], partial: ["△", "mid"], missed: ["✕", "ng"], done: ["✓", "ok"] };
+  const weekNames = ["先週", "今週", "来週", "再来週"];
+  let html = `<div class="cal-row cal-headrow"><span></span>${"月火水木金土日".split("").map((w, i) => `<span class="${i === 5 ? "sat" : i === 6 ? "sun" : ""}">${w}</span>`).join("")}<span>計</span></div>`;
+  for (let w = 0; w < 4; w++) {
+    let actual = 0, planned = 0;
+    const cells = [];
+    for (let i = 0; i < 7; i++) {
+      const date = iso(mon0 + (w * 7 + i) * 86400000);
+      const day = all.find((x) => x.date === date);
+      const past = date < today;
+      const ran = day?.actual?.reduce((s, a) => s + a.distanceKm, 0) ?? 0;
+      actual += ran;
+      let mark = "", cls = "";
+      if (day && (past || (date === today && ran))) {
+        const r = day.result;
+        if (r?.state === "ran" || r?.state === "ran_manual") [mark, cls] = RES[r.achievement.level];
+        else if (r?.state === "extra") [mark, cls] = day.actual.some((a) => a.distanceKm >= 40) ? ["🏁", "race"] : ["✓", "ok"];
+        else if (r?.state === "auto_skipped" || r?.state === "skipped") [mark, cls] = ["✕", "ng"];
+      } else if (day) {
+        const s = chosen(day);
+        if (s) {
+          mark = CAT[s.category].icon;
+          cls = `plan cat-${s.category}${day.optional ? " opt" : ""}`;
+          if (!day.optional) planned += s.distanceKm;
+        }
+      }
+      const isToday = date === today;
+      const hol = day?.holiday ? " hol" : "";
+      cells.push(
+        `<button class="cal-cell${isToday ? " is-today" : ""}${past ? " past" : ""}${hol}" ${day ? `data-sheet="day" data-date="${date}"` : "disabled"}>
+          <small>${Number(date.slice(8, 10))}</small><i class="${cls}">${mark || "·"}</i></button>`,
+      );
+    }
+    const total = w < 1 ? actual : w === 1 ? actual + planned : planned;
+    const sum = w === 1 ? `${Math.round(actual)}/${Math.round(total)}` : `${Math.round(total)}`;
+    html += `<div class="cal-row"><span class="cal-wk">${weekNames[w]}</span>${cells.join("")}<span class="cal-sum">${sum}<small>km</small></span></div>`;
+  }
+  $("cal").innerHTML = html;
 }
 
 function renderVolume(plan) {
@@ -467,10 +484,9 @@ async function loadPlan(connected) {
   renderWeek(body);
   renderSeason(body);
   renderInsights(body);
-  renderDays(body);
+  renderCalendar(body);
   renderCare(body);
   renderNutrition(body);
-  renderPast(body);
   renderVolume(body);
   renderAbility(body);
   renderSettings(body);
