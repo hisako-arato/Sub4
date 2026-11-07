@@ -311,7 +311,7 @@ ul.calls { list-style: none; padding: 0; font-size: 13px; }
 #tab-dist { justify-content: flex-start; }
 
 /* ---- ケアの実演 ---- */
-.shell.demo { grid-template-rows: auto minmax(220px, 56dvh) 1fr auto; }
+.shell.demo, .shell.talkdemo { grid-template-rows: auto minmax(220px, 56dvh) 1fr auto; }
 .shell.demo .bubble { top: 8px; bottom: auto; }
 .shell.demo .seg { display: none; }
 .care-session { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: space-between; gap: 6px; text-align: center; }
@@ -328,7 +328,7 @@ ul.calls { list-style: none; padding: 0; font-size: 13px; }
 .cs-ctrl { display: flex; gap: 8px; }
 .warn-text { color: var(--speed); }
 @media (max-height: 700px) {
-  .shell.demo { grid-template-rows: auto minmax(200px, 52dvh) 1fr auto; }
+  .shell.demo, .shell.talkdemo { grid-template-rows: auto minmax(200px, 52dvh) 1fr auto; }
   .cs-count { font-size: 2rem; }
 }
 /* ---- ケア：すべて ---- */
@@ -363,3 +363,7 @@ ul.calls { list-style: none; padding: 0; font-size: 13px; }
 .link-row { display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: auto; background: var(--card); color: var(--accent); border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px; font-size: 14px; font-weight: 700; flex: none; }
 .link-row span { font-size: 18px; }
 .back-btn { align-self: flex-start; background: none; color: var(--accent); padding: 2px 0; font-size: 14px; font-weight: 700; flex: none; }
+/* おしゃべり中の実演：吹き出しを上へ。なぞって回せることを示す */
+.shell.talkdemo .bubble { top: 8px; bottom: auto; }
+.coach::after { content: "↔ なぞって回転"; position: absolute; right: 10px; bottom: 6px; font-size: 11px; color: var(--muted); opacity: 0; transition: opacity .4s; pointer-events: none; }
+.shell.demo .coach::after, .shell.talkdemo .coach::after { opacity: .85; }

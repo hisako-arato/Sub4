@@ -26,7 +26,10 @@ let session = null; // ケアの実演中の状態
 let autoSynced = false;
 let coach = null;
 try {
-  coach = createCoach({ canvas: $("coach-canvas"), bubble: $("coach-bubble"), text: $("coach-text"), more: $("coach-more") });
+  coach = createCoach({ canvas: $("coach-canvas"), bubble: $("coach-bubble"), text: $("coach-text"), more: $("coach-more"),
+    onTalkDemo: (on) => document.querySelector(".shell").classList.toggle("talkdemo", on),
+  });
+  coach.setAutoTalk(true);
 } catch (e) {
   console.warn("coach unavailable", e);
 }
@@ -40,6 +43,7 @@ function setTab(name) {
     show("care-list");
   }
   if (name !== "care" && session) stopCareSession(false);
+  coach?.setAutoTalk(name === "coach");
   for (const b of document.querySelectorAll(".tabbar button")) b.classList.toggle("on", b.dataset.tab === name);
   for (const p of document.querySelectorAll(".panel")) p.hidden = p.id !== `tab-${name}`;
 }
@@ -777,6 +781,7 @@ function startCareSession(list) {
   setTab("care");
   session = { steps: buildSteps(list), list, i: -1, left: 0, paused: false, timer: null, last: performance.now(), said10: false };
   document.querySelector(".shell").classList.add("demo");
+  coach.chat(false);
   session.hidden = ["care-list", "care-all"].filter((id) => !$(id).hidden);
   for (const id of session.hidden) show(id, false);
   show("care-session");
@@ -856,6 +861,7 @@ function stopCareSession(done) {
   const restore = session.hidden ?? ["care-list"];
   session = null;
   coach?.demo(null);
+  coach?.chat(true);
   document.querySelector(".shell").classList.remove("demo");
   show("care-session", false);
   for (const id of restore) show(id);

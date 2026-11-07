@@ -30,7 +30,7 @@ function lineExpression(line, mood) {
 }
 const TYPE_MS = 45; // 1文字あたり
 
-export function createCoach({ canvas, bubble, text, more, url = "/vrm/coach.vrm" }) {
+export function createCoach({ canvas, bubble, text, more, url = "/vrm/coach.vrm", onTalkDemo = () => {} }) {
   let renderer;
   try {
     renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
@@ -62,6 +62,18 @@ export function createCoach({ canvas, bubble, text, more, url = "/vrm/coach.vrm"
   let vrm = null;
   let lines = [];
   let idx = 0;
+  // 今日のセリフを話し終えたあとの「おしゃべり」（{ text, demo? }）。タップするたびに1つずつ
+  let talk = [];
+  let talkPos = -1;
+  let inTalk = false;
+  let chatOn = true; // ケアの実演中などは止める
+  let autoTalk = false; // しばらく触られないとき、自分から話しかける
+  let autoCount = 0;
+  let lastActivity = performance.now();
+  let talkDemoTimer = null;
+  // 指でなぞってカメラを回す（離して少しすると正面に戻る。実演中は戻さない）
+  let orbitYaw = 0, orbitPitch = 0, drag = null, dragEnd = 0, suppressClick = false;
+  const sph = new THREE.Spherical(), off = new THREE.Vector3();
   let mood = "neutral";
   let typing = null;
   let speakingUntil = 0;
@@ -192,7 +204,16 @@ export function createCoach({ canvas, bubble, text, more, url = "/vrm/coach.vrm"
     if (frames.upper) {
       camPos.lerpVectors(frames.upper.pos, frames.full.pos, full).lerp(frames.floor.pos, floorK);
       camLook.lerpVectors(frames.upper.look, frames.full.look, full).lerp(frames.floor.look, floorK);
-      camera.position.copy(camPos);
+      if (!drag && !m && performance.now() - dragEnd > 3000) {
+        orbitYaw *= 1 - Math.min(1, dt * 2);
+        orbitPitch *= 1 - Math.min(1, dt * 2);
+      }
+      off.subVectors(camPos, camLook);
+      sph.setFromVector3(off);
+      sph.theta += orbitYaw;
+      sph.phi = Math.min(1.75, Math.max(0.35, sph.phi - orbitPitch));
+      off.setFromSpherical(sph);
+      camera.position.copy(camLook).add(off);
       camera.lookAt(camLook);
     }
 
@@ -234,9 +255,34 @@ export function createCoach({ canvas, bubble, text, more, url = "/vrm/coach.vrm"
   }
   requestAnimationFrame(tick);
 
+  const current = () => (inTalk ? talk[talkPos] : { text: lines[idx] ?? "" }) ?? { text: "" };
+  const hasMore = () => (!inTalk && idx < lines.length - 1) || (chatOn && talk.length > 0);
+  function setMore() {
+    more.textContent = !inTalk && idx < lines.length - 1 ? "▼" : "💬";
+    more.hidden = !hasMore();
+  }
+
+  function endTalkDemo() {
+    clearTimeout(talkDemoTimer);
+    talkDemoTimer = null;
+    if (motion?.talk) {
+      motion = null;
+      onTalkDemo(false);
+    }
+  }
+
   // 1文字ずつ表示しながら口を動かす
   function show() {
-    const line = lines[idx] ?? "";
+    const item = current();
+    const line = item.text;
+    lastActivity = performance.now();
+    endTalkDemo();
+    // おしゃべりの中のストレッチは、話しながら実演する（ケアの実演中は除く）
+    if (item.demo && !motion && STRETCH_MOTION[item.demo]) {
+      motion = { id: item.demo, side: "left", start: performance.now(), talk: true };
+      onTalkDemo(true);
+      talkDemoTimer = setTimeout(endTalkDemo, Math.max(12000, line.length * TYPE_MS + 8000));
+    }
     const ex = lineExpression(line, mood);
     pulse = { name: ex === "praise" ? "happy" : ex, at: performance.now(), praise: ex === "praise" };
     clearInterval(typing);
@@ -250,27 +296,75 @@ export function createCoach({ canvas, bubble, text, more, url = "/vrm/coach.vrm"
       if (n >= line.length) {
         clearInterval(typing);
         typing = null;
-        more.hidden = idx >= lines.length - 1;
+        setMore();
       }
     }, TYPE_MS);
   }
 
   function next() {
-    if (!lines.length) return;
+    if (!lines.length && !talk.length) return;
     if (typing) {
       // 表示中なら最後まで出す
       clearInterval(typing);
       typing = null;
-      text.textContent = lines[idx];
+      text.textContent = current().text;
       speakingUntil = 0;
-      more.hidden = idx >= lines.length - 1;
+      setMore();
       return;
     }
-    idx = (idx + 1) % lines.length;
+    if (!inTalk && idx < lines.length - 1) idx++;
+    else if (chatOn && talk.length) {
+      inTalk = true;
+      talkPos = (talkPos + 1) % talk.length;
+    } else {
+      inTalk = false;
+      idx = (idx + 1) % Math.max(1, lines.length);
+    }
     show();
   }
-  canvas.addEventListener("click", next);
-  bubble.addEventListener("click", next);
+  function tap() {
+    if (suppressClick) return void (suppressClick = false);
+    autoCount = 0;
+    next();
+  }
+  canvas.addEventListener("click", tap);
+  bubble.addEventListener("click", tap);
+
+  // しばらく触られなければ、自分から話しかける（3回まで。触ると数え直し）
+  setInterval(() => {
+    if (!autoTalk || !chatOn || typing || motion || drag || document.hidden || !visible || !talk.length || autoCount >= 3) return;
+    if (performance.now() - lastActivity < 45000) return;
+    autoCount++;
+    next();
+  }, 5000);
+
+  canvas.style.touchAction = "none";
+  canvas.addEventListener("pointerdown", (e) => {
+    drag = { x: e.clientX, y: e.clientY, yaw: orbitYaw, pitch: orbitPitch, moved: false, id: e.pointerId };
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (!drag.moved && Math.hypot(dx, dy) < 6) return;
+    if (!drag.moved) canvas.setPointerCapture?.(e.pointerId);
+    drag.moved = true;
+    orbitYaw = drag.yaw - dx * 0.012;
+    orbitPitch = Math.max(-0.5, Math.min(0.6, drag.pitch + dy * 0.006));
+  });
+  const up = (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    if (drag.moved) suppressClick = true;
+    drag = null;
+    dragEnd = performance.now();
+    lastActivity = dragEnd;
+    // 回して見ている間は実演を続ける
+    if (motion?.talk) {
+      clearTimeout(talkDemoTimer);
+      talkDemoTimer = setTimeout(endTalkDemo, 8000);
+    }
+  };
+  canvas.addEventListener("pointerup", up);
+  canvas.addEventListener("pointercancel", up);
 
   return {
     /** 動作確認用：表情を固定する（null で解除） */
@@ -279,6 +373,7 @@ export function createCoach({ canvas, bubble, text, more, url = "/vrm/coach.vrm"
     },
     /** ストレッチを実演する（id, side）。null で立ち姿に戻る */
     demo(id, side = "left") {
+      endTalkDemo();
       motion = id ? { id, side, start: performance.now() } : null;
     },
     get demoing() {
@@ -287,10 +382,30 @@ export function createCoach({ canvas, bubble, text, more, url = "/vrm/coach.vrm"
     say(speech, { restart = false } = {}) {
       const same = speech && JSON.stringify(speech.lines) === JSON.stringify(lines);
       mood = speech?.expression ?? "neutral";
+      // おしゃべりは、渡されたときだけ入れ替える（同じなら続きから）
+      if (speech?.talk) {
+        const nt = speech.talk.filter((x) => !(speech.lines ?? []).includes(x.text));
+        if (JSON.stringify(nt) !== JSON.stringify(talk)) {
+          talk = nt;
+          talkPos = -1;
+        }
+      }
       if (same && !restart) return; // 計画の読み直しで同じセリフなら言い直さない
       lines = speech?.lines ?? [];
       idx = 0;
+      inTalk = false;
       if (lines.length) show();
+    },
+    /** おしゃべりを止める／再開する（ケアの実演中は止める） */
+    chat(on) {
+      chatOn = on;
+      if (!on) endTalkDemo();
+      if (!typing && (lines.length || talk.length)) setMore();
+    },
+    /** しばらく触られないとき自分から話しかけるか（コーチのタブを開いているときだけ） */
+    setAutoTalk(on) {
+      autoTalk = on;
+      lastActivity = performance.now();
     },
   };
 }

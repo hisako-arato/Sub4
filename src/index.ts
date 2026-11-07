@@ -14,7 +14,8 @@ import { addDays, daysBetween, mondayOf, RACE_DATE, seasonTimeline, todayJst, we
 import { fmtPace, fmtTime, predictTime } from "./plan/vdot.ts";
 import { loadPushed, loadPushedStrength, pushStrength, pushWorkout } from "./coros/workout.ts";
 import { computeVolume } from "./plan/volume.ts";
-import { coachSpeech, stretchSpeech } from "./coach/speech.ts";
+import { coachSpeech, stretchSpeech, type CoachContext } from "./coach/speech.ts";
+import { coachTalk } from "./coach/talk.ts";
 import { careFor, careLibrary, STRETCHES } from "./care/care.ts";
 import { nutritionFor } from "./care/nutrition.ts";
 
@@ -172,7 +173,7 @@ async function buildPlanResponse(env: Env) {
   const volume = computeVolume(ability, activities, days, today);
   const stale = !snapshot?.syncedAt || Date.now() / 1000 - snapshot.syncedAt > 36 * 3600;
   const tuneup = days.find((d) => d.main?.category === "race" && !/静岡/.test(d.main.title));
-  const coach = coachSpeech({
+  const coachCtx: CoachContext = {
     today: days[0] ?? null,
     daysToRace: daysBetween(today, RACE_DATE),
     phase: weekSpecFor(today)?.phase ?? null,
@@ -186,7 +187,9 @@ async function buildPlanResponse(env: Env) {
     insights,
     nutrition,
     care: modes.pain ? null : { title: carePlan.title, before: carePlan.before.map((id) => STRETCHES[id]), after: carePlan.after.map((id) => STRETCHES[id]) },
-  });
+  };
+  // 今日のセリフ＋話し終えたあとのおしゃべり（タップするたびに1つずつ）
+  const coach = { ...coachSpeech(coachCtx), talk: conn.connected ? coachTalk(coachCtx) : [] };
   const spec = weekSpecFor(today);
   const syncedAt = snapshot?.syncedAt ?? null;
   const p = ability.paces;

@@ -542,3 +542,31 @@ test("栄養は画面に出さず、コーチが大事な日に必ず話す（�
   const pain = coachSpeech({ ...ctxBase(long), modes: { pain: true, fatigue: false, comeback: false }, nutrition: nutritionFor(long.date, long.main, 62, "coros") });
   assert.ok(!pain.lines.some((l) => l.includes("炭水化物")));
 });
+
+// ---- おしゃべり（今日のセリフのあと） ----
+import { coachTalk } from "../src/coach/talk.ts";
+import { STRETCH_MOTION } from "../public/stretch-motion.js";
+
+test("おしゃべり：毎日たっぷりあり、話題が混ざり、ストレッチは実演つき・痛みのときは実演なし", () => {
+  for (const day of season(1.0).filter((_, i) => i % 9 === 0)) {
+    const carePlan = careFor(day.main, { pain: false });
+    const ctx: CoachContext = {
+      ...ctxBase(day),
+      nutrition: nutritionFor(day.date, day.main, 62, "coros"),
+      care: { title: carePlan.title, before: carePlan.before.map((id) => STRETCHES[id]), after: carePlan.after.map((id) => STRETCHES[id]) },
+      insights: [{ level: "info", coach: "気づきのひと言" }],
+    };
+    const talk = coachTalk(ctx);
+    assert.ok(talk.length >= 30, `${day.date}: ${talk.length}`);
+    for (const t of talk) {
+      assert.ok(t.text && !/undefined|NaN|null/.test(t.text), `${day.date}: ${t.text}`);
+      if (t.demo) assert.ok(STRETCH_MOTION[t.demo], t.demo);
+    }
+    // 最初の6つで4種類以上の話題（偏らない）
+    assert.ok(new Set(talk.slice(0, 6).map((t) => t.topic)).size >= 4, day.date);
+    assert.equal(talk[0].topic, "stretch");
+    assert.deepEqual(coachTalk(ctx), talk, "同じ日は同じ並び");
+    const pain = coachTalk({ ...ctx, modes: { pain: true, fatigue: false, comeback: false }, care: null });
+    assert.ok(pain.length > 10 && pain.every((t) => !t.demo && t.topic !== "stretch"));
+  }
+});
